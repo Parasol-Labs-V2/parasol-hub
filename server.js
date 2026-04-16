@@ -234,5 +234,9 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`MessageDesk Dashboard running on http://localhost:${PORT}`));
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`MessageDesk Dashboard running on http://localhost:${PORT}`));
+}
+
+module.exports = app;
