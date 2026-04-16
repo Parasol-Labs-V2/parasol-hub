@@ -198,21 +198,49 @@ const DEMO_STATUS_VALS = new Set(['Scheduled','Completed','No Show','No-Show','C
 
 let _oppFields = { demoDate: null, demoStatus: null, scanned: false };
 
+// Return a flat map of all custom entries on an opp, handling two Close.io layouts:
+//   Layout A: opp.custom = { cf_xxx: value, ... }   (nested object)
+//   Layout B: opp['custom.cf_xxx'] = value           (top-level dotted keys)
+function oppCustomEntries(opp) {
+  const entries = [];
+  // Layout A
+  if (opp.custom && typeof opp.custom === 'object') {
+    for (const [k, v] of Object.entries(opp.custom)) entries.push([k, v]);
+  }
+  // Layout B — top-level keys that start with "custom."
+  for (const [k, v] of Object.entries(opp)) {
+    if (k.startsWith('custom.')) entries.push([k.slice('custom.'.length), v]);
+  }
+  return entries;
+}
+
 function detectOppFields(opps) {
   if (_oppFields.scanned) return;
 
-  console.log('\n════ OPP CUSTOM FIELD DUMP (first 5 Parasol opps) ════');
+  // Log full raw JSON of first opp so we can see the exact shape
+  if (opps.length > 0) {
+    console.log('\nFULL OPP OBJECT (first Parasol opp):');
+    console.log(JSON.stringify(opps[0], null, 2));
+  }
+
+  console.log('\n════ OPP CUSTOM KEY SCAN (first 5 Parasol opps) ════');
   opps.slice(0, 5).forEach((opp, i) => {
-    const c = opp.custom || {};
     console.log(`\n[${i}] ${opp.lead_name || 'unknown'} — status: ${opp.status_label}`);
-    if (!Object.keys(c).length) { console.log('  (no custom fields on opp)'); return; }
-    Object.entries(c).forEach(([k, v]) => console.log(`  ${k}: ${JSON.stringify(v)}`));
+    // All top-level keys that contain "custom"
+    const customKeys = Object.keys(opp).filter(k => k.toLowerCase().includes('custom'));
+    if (!customKeys.length) { console.log('  ⚠ no keys containing "custom" on this opp'); }
+    customKeys.forEach(k => console.log(`  OPP CUSTOM: ${k} = ${JSON.stringify(opp[k])}`));
+    // Also print the flattened view
+    const flat = oppCustomEntries(opp);
+    if (flat.length) {
+      console.log('  Flattened custom entries:');
+      flat.forEach(([k, v]) => console.log(`    ${k}: ${JSON.stringify(v)}`));
+    }
   });
-  console.log('\n════ END OPP CUSTOM FIELD DUMP ════\n');
+  console.log('\n════ END OPP CUSTOM KEY SCAN ════\n');
 
   for (const opp of opps) {
-    const c = opp.custom || {};
-    for (const [k, v] of Object.entries(c)) {
+    for (const [k, v] of oppCustomEntries(opp)) {
       if (!_oppFields.demoStatus && typeof v === 'string' && DEMO_STATUS_VALS.has(v)) {
         _oppFields.demoStatus = k;
       }
@@ -229,17 +257,29 @@ function detectOppFields(opps) {
 
   _oppFields.scanned = true;
   console.log('Opp custom fields resolved →', _oppFields);
+  if (!_oppFields.demoStatus || !_oppFields.demoDate) {
+    console.log('⚠ One or both opp fields not auto-detected. Check the FULL OPP OBJECT above.');
+    console.log('  Then hardcode: _oppFields.demoDate = "cf_xxx"; _oppFields.demoStatus = "cf_yyy";');
+  }
+}
+
+function getOppCustomVal(opp, cfKey) {
+  if (!cfKey) return undefined;
+  // Layout A: opp.custom[cfKey]
+  if (opp.custom && opp.custom[cfKey] !== undefined) return opp.custom[cfKey];
+  // Layout B: opp['custom.cfKey']
+  if (opp[`custom.${cfKey}`] !== undefined) return opp[`custom.${cfKey}`];
+  return undefined;
 }
 
 function getOppDemoStatus(opp) {
-  return _oppFields.demoStatus ? ((opp.custom||{})[_oppFields.demoStatus] || '') : '';
+  const v = getOppCustomVal(opp, _oppFields.demoStatus);
+  return (typeof v === 'string' ? v : '') || '';
 }
 function getOppDemoDate(opp) {
-  if (!_oppFields.demoDate) return null;
-  const v = (opp.custom||{})[_oppFields.demoDate];
-  if (!v) return null;
-  // Could be ISO string or epoch ms
-  const d = typeof v === 'number' ? new Date(v) : new Date(v);
+  const v = getOppCustomVal(opp, _oppFields.demoDate);
+  if (v === null || v === undefined) return null;
+  const d = new Date(v);
   return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
 }
 
@@ -309,9 +349,20 @@ function processLeads(allLeads) {
   );
   console.log(`Pipeline filter: ${allLeads.length} total → ${leads.length} Parasol`);
 
-  // Log first Parasol lead raw so we can identify custom field IDs
+  // Log first opportunity object so we can see all its keys (including custom)
   if (leads.length > 0) {
-    console.log('SAMPLE LEAD:', JSON.stringify(leads[0], null, 2));
+    const firstOpp = leads[0]?.opportunities?.find(o => o.pipeline_id === PARASOL_PIPELINE_ID);
+    if (firstOpp) {
+      console.log('\n════ FIRST PARASOL OPP — ALL KEYS ════');
+      Object.keys(firstOpp).filter(k => k.toLowerCase().includes('custom')).forEach(k => {
+        console.log(`OPP CUSTOM: ${k} = ${JSON.stringify(firstOpp[k])}`);
+      });
+      if (!Object.keys(firstOpp).some(k => k.toLowerCase().includes('custom'))) {
+        console.log('⚠ No custom keys found on opp. Opportunities may need direct fetch.');
+        console.log('  Keys present:', Object.keys(firstOpp).join(', '));
+      }
+      console.log('════ END FIRST OPP KEYS ════\n');
+    }
   }
 
   detectFields(leads);
