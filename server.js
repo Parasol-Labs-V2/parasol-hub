@@ -33,7 +33,7 @@ async function fetchAllPages(endpoint, params = {}) {
 }
 
 function toMonthly(opp) {
-  const val = parseFloat(opp.value) || 0;
+  const val = (parseFloat(opp.value) || 0) / 100; // Close.io stores values in cents
   const freq = (opp.value_period || '').toLowerCase();
   if (freq === 'annual') return val / 12;
   if (freq === 'one_time' || freq === 'one-time') return 0;
