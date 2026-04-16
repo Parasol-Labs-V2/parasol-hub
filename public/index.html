@@ -414,15 +414,73 @@ function switchTab(i) {
   if (i === 5) renderAllDeals();
 }
 
+// ─── Progress helpers ──────────────────────────────────────────────────────────
+function showFetchProgress(s) {
+  const pct     = s.pct || 0;
+  const fetched = (s.fetched || 0).toLocaleString();
+  const total   = s.total > 0 ? s.total.toLocaleString() : '…';
+  const html = `
+    <div class="loading-wrap">
+      <div style="text-align:center;max-width:400px;width:100%">
+        <div class="spinner" style="margin:0 auto 18px"></div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:10px;color:var(--black)">Loading Close.io data…</div>
+        <div style="background:var(--gray-light);border-radius:8px;height:8px;overflow:hidden;margin-bottom:10px">
+          <div id="progress-bar" style="height:100%;background:var(--red);border-radius:8px;transition:width .4s;width:${pct}%"></div>
+        </div>
+        <div id="progress-text" style="font-size:13px;color:var(--gray);margin-bottom:6px">
+          ${s.total > 0 ? `${fetched} / ${total} leads fetched (${pct}%)` : 'Starting fetch…'}
+        </div>
+        <div style="font-size:11px;color:#9CA3AF">First load: ~60–90 sec &nbsp;·&nbsp; Future loads within 30 min: instant</div>
+      </div>
+    </div>`;
+  for (let i = 0; i < 6; i++) { const p = $(`panel-${i}`); if (p) p.innerHTML = html; }
+}
+
+function updateProgress(s) {
+  const bar = $('progress-bar');
+  const txt = $('progress-text');
+  if (bar) bar.style.width = (s.pct || 0) + '%';
+  if (txt && s.total > 0) {
+    txt.textContent = `${s.fetched.toLocaleString()} / ${s.total.toLocaleString()} leads fetched (${s.pct}%)`;
+  }
+}
+
+function pollUntilReady() {
+  return new Promise((resolve, reject) => {
+    const tick = async () => {
+      try {
+        const res = await fetch('/api/status');
+        const s   = await res.json();
+        if (s.status === 'error')  { reject(new Error(s.error || 'Fetch failed')); return; }
+        if (s.status === 'ready')  { resolve(); return; }
+        updateProgress(s);
+        setTimeout(tick, 2000);
+      } catch (e) { reject(e); }
+    };
+    setTimeout(tick, 2000);
+  });
+}
+
 // ─── Fetch & render ─────────────────────────────────────────────────────────────
 async function fetchAndRender(force = false) {
   const btn = $('refresh-btn');
   if (btn) { btn.disabled = true; btn.textContent = '↻ Loading…'; }
   try {
-    const url  = force ? '/api/dashboard?refresh=1' : '/api/dashboard';
-    const res  = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    dashData   = await res.json();
+    const url = force ? '/api/dashboard?refresh=1' : '/api/dashboard';
+    const res = await fetch(url);
+    const body = await res.json();
+
+    if (res.status === 202) {
+      // Server is still fetching — show progress UI and poll
+      showFetchProgress(body);
+      await pollUntilReady();
+      // Data is ready — fetch it now
+      const res2  = await fetch('/api/dashboard');
+      dashData = await res2.json();
+    } else {
+      dashData = body;
+    }
+
     updateHeader();
     if (activeTab === 0) renderPipeline();
     if (activeTab === 1) renderFunnel();
@@ -435,7 +493,7 @@ async function fetchAndRender(force = false) {
     const mm = String(ts.getMinutes()).padStart(2,'0');
     const ss = String(ts.getSeconds()).padStart(2,'0');
     const upd = $('updated-time');
-    if (upd) upd.textContent = `Updated ${hh}:${mm}:${ss}`;
+    if (upd) upd.textContent = `Updated ${hh}:${mm}:${ss}${dashData.cached ? ' (cached)' : ''}`;
   } catch(e) {
     $('panel-0').innerHTML = `<div class="error-box">⚠ Failed to load: ${e.message}</div>`;
   } finally {
