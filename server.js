@@ -137,45 +137,14 @@ function scoreOpp(opp, lead) {
   return Math.min(s, 99);
 }
 
-// ─── Fetch helpers ─────────────────────────────────────────────────────────────
+// ─── Fetch all leads: parallel GET pagination, filter Parasol after ────────────
 const LEAD_FIELDS = 'id,display_name,opportunities,custom,date_created';
 const LEAD_BASE   = `https://api.close.com/api/v1/lead/?_limit=100&_fields=${LEAD_FIELDS}`;
 
-async function fetchPage(skip, extraParams = '') {
-  const url = `${LEAD_BASE}${extraParams}&_skip=${skip}`;
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`Close API ${res.status}: ${(await res.text()).slice(0,200)}`);
+async function fetchPage(skip) {
+  const res = await fetch(`${LEAD_BASE}&_skip=${skip}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Close API ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res.json();
-}
-
-// Fetch pages in parallel batches of 4, updating progress as each batch lands
-async function parallelFetch(firstData, extraParams = '') {
-  const total      = firstData.total_results || 0;
-  fetchStatus.total = total;
-
-  let all = firstData.data || [];
-  fetchStatus.fetched = all.length;
-  fetchStatus.pct     = total > 0 ? Math.round(all.length / total * 100) : 0;
-  process.stdout.write(`\rFetching: ${all.length}/${total || '?'}   `);
-
-  const totalPages = total > 0 ? Math.ceil(total / 100) : 1;
-  const BATCH = 4;
-
-  for (let page = 1; page < totalPages; page += BATCH) {
-    const skips = [];
-    for (let p = page; p < Math.min(page + BATCH, totalPages); p++) skips.push(p * 100);
-
-    const pages = await Promise.all(
-      skips.map(skip => fetchPage(skip, extraParams).then(d => d.data || []))
-    );
-    for (const pageData of pages) all = all.concat(pageData);
-    fetchStatus.fetched = all.length;
-    fetchStatus.pct     = total > 0 ? Math.round(all.length / total * 100) : 0;
-    process.stdout.write(`\rFetching: ${all.length}/${total} (${fetchStatus.pct}%)   `);
-  }
-
-  console.log(`\nFetched ${all.length} leads`);
-  return all;
 }
 
 async function fetchAllLeads() {
@@ -183,35 +152,50 @@ async function fetchAllLeads() {
   fetchStatus.total   = 0;
   fetchStatus.pct     = 0;
 
-  // ── Attempt 1: opportunity query filter (fetches only Parasol leads) ──────────
-  const QUERY      = `opportunity(pipeline_id:"${PARASOL_PIPELINE_ID}")`;
-  const queryParam = `&query=${encodeURIComponent(QUERY)}`;
-  try {
-    const firstData = await fetchPage(0, queryParam);
-    const total     = firstData.total_results;
-    if (typeof total === 'number' && total < 5000) {
-      console.log(`Query filter → ${total} Parasol leads`);
-      return parallelFetch(firstData, queryParam);
-    }
-    console.log(`Query returned ${total} (unexpected), falling back to full fetch`);
-  } catch (e) {
-    console.log(`Query filter failed: ${e.message} — falling back to full fetch`);
+  // Page 0 first — gives us total_results for accurate progress bar
+  const firstData = await fetchPage(0);
+  const total     = firstData.total_results || 0;
+  fetchStatus.total = total;
+
+  let all = firstData.data || [];
+  fetchStatus.fetched = all.length;
+  fetchStatus.pct     = total > 0 ? Math.round(all.length / total * 100) : 0;
+  process.stdout.write(`\rFetching leads: ${all.length}/${total}   `);
+
+  const totalPages = total > 0 ? Math.ceil(total / 100) : 1;
+  const BATCH = 5; // 5 concurrent requests
+
+  for (let page = 1; page < totalPages; page += BATCH) {
+    const skips = [];
+    for (let p = page; p < Math.min(page + BATCH, totalPages); p++) skips.push(p * 100);
+
+    const pages = await Promise.all(skips.map(skip => fetchPage(skip).then(d => d.data || [])));
+    for (const pageData of pages) all = all.concat(pageData);
+
+    fetchStatus.fetched = all.length;
+    fetchStatus.pct     = total > 0 ? Math.round(all.length / total * 100) : 0;
+    process.stdout.write(`\rFetching leads: ${all.length}/${total} (${fetchStatus.pct}%)   `);
   }
 
-  // ── Fallback: fetch all leads in parallel, filter client-side ─────────────────
-  console.log('Fetching all leads with parallel pagination (will filter Parasol after)');
-  const firstData = await fetchPage(0);
-  return parallelFetch(firstData);
+  console.log(`\nFetched ${all.length} total leads`);
+  return all;
 }
 
 // ─── Process + build dashboard ─────────────────────────────────────────────────
 function processLeads(allLeads) {
-  detectFields(allLeads);
-  // Filter to Parasol pipeline — no-op when query filter worked, required for fallback
-  const leads = allLeads.filter(l =>
-    (l.opportunities||[]).some(o => o.pipeline_id === PARASOL_PIPELINE_ID)
+  // Hard filter to Parasol pipeline only
+  const leads = allLeads.filter(lead =>
+    lead.opportunities &&
+    lead.opportunities.some(opp => opp.pipeline_id === PARASOL_PIPELINE_ID)
   );
-  console.log(`Processing: ${allLeads.length} fetched → ${leads.length} Parasol`);
+  console.log(`Pipeline filter: ${allLeads.length} total → ${leads.length} Parasol`);
+
+  // Log first Parasol lead raw so we can identify custom field IDs
+  if (leads.length > 0) {
+    console.log('SAMPLE LEAD:', JSON.stringify(leads[0], null, 2));
+  }
+
+  detectFields(leads);
 
   const deals = [];
   for (const lead of leads) {
