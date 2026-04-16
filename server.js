@@ -83,19 +83,53 @@ app.get('/api/debug', async (req, res) => {
 app.get('/api/dashboard', async (req, res) => {
   try {
     // Fetch all leads with opportunities
-    const leads = await fetchAllPages('/lead/', {
+    const allLeads = await fetchAllPages('/lead/', {
       query: 'has:opportunities',
       _fields: 'id,display_name,opportunities,custom,contacts,date_created',
     });
 
+    // Log first 10 leads so we can see the raw status field names
+    console.log('\n=== FIRST 10 LEADS (raw status fields) ===');
+    allLeads.slice(0, 10).forEach((lead, i) => {
+      const opp0 = lead.opportunities?.[0];
+      console.log(`[${i}] ${lead.display_name}`);
+      console.log(`     status_label        : ${opp0?.status_label}`);
+      console.log(`     status_type         : ${opp0?.status_type}`);
+      console.log(`     opp keys            : ${opp0 ? Object.keys(opp0).join(', ') : 'no opp'}`);
+    });
+
+    // Hard filter: keep ONLY leads whose first opportunity has a Parasol: status
+    const leads = allLeads.filter(lead => {
+      const status =
+        lead.opportunities?.[0]?.status_label ||
+        '';
+      return status.startsWith('Parasol:');
+    });
+
+    console.log(`\nLeads before filter : ${allLeads.length}`);
+    console.log(`Leads after filter  : ${leads.length} (expected ~360-370)\n`);
+
     // Fetch all opportunities directly for richer data
-    const opps = await fetchAllPages('/opportunity/', {
+    const allOpps = await fetchAllPages('/opportunity/', {
       _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
     });
+
+    // Log sample opp fields on first call to verify status_label field name
+    if (allOpps.length > 0) {
+      console.log('=== SAMPLE OPP FIELDS ===');
+      console.log(JSON.stringify(allOpps[0], null, 2).slice(0, 600));
+    }
 
     // Fetch opportunity statuses
     const statusRes = await closeApi.get('/status/opportunity/');
     const statuses = statusRes.data.data || [];
+
+    // Build a set of Parasol lead IDs for fast lookup, then filter opps
+    const parasolLeadIdSet = new Set(leads.map(l => l.id));
+    const opps = allOpps.filter(o => isParasolStatus(o.status_label || '') && parasolLeadIdSet.has(o.lead_id));
+
+    console.log(`Opps before filter  : ${allOpps.length}`);
+    console.log(`Opps after filter   : ${opps.length}\n`);
 
     // Build lookup maps
     const leadMap = {};
@@ -110,7 +144,6 @@ app.get('/api/dashboard', async (req, res) => {
       if (lead.custom) {
         for (const [k, v] of Object.entries(lead.custom)) {
           if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-            // likely A2P field
             if (!a2pFieldId) a2pFieldId = k;
           }
         }
@@ -133,8 +166,6 @@ app.get('/api/dashboard', async (req, res) => {
     const parasolLeadIds = new Set();
 
     for (const opp of opps) {
-      // Exclude all non-Parasol statuses (Sales:, etc.)
-      if (!isParasolStatus(opp.status_label || '')) continue;
 
       const monthly = toMonthly(opp);
       const lead = leadMap[opp.lead_id] || {};
@@ -196,8 +227,8 @@ app.get('/api/dashboard', async (req, res) => {
     // Sort active by monthly value desc
     activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
 
-    // KPI calculations
-    const totalLeads = parasolLeadIds.size;
+    // KPI calculations — leads array is already Parasol-filtered
+    const totalLeads = leads.length;
     const activeCount = activeOpps.length;
     const wonCount = wonOpps.length;
     const lostCount = lostOpps.length;
