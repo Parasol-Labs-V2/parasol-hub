@@ -297,7 +297,8 @@ function processLeads(allLeads, oppCustomMap = {}) {
         demo_completed:  demoCompleted,
         demo_status:     demoStatus,
         demo_date:       demoDate,
-        date_created:    opp.date_created || '',
+        date_created:    opp.date_created  || '',
+        date_updated:    opp.date_updated  || '',
       });
     }
   }
@@ -305,7 +306,6 @@ function processLeads(allLeads, oppCustomMap = {}) {
 }
 
 function buildDashboard(deals) {
-  const snapshot = null; // no persistent storage on Vercel — WoW deltas unavailable
   const active     = deals.filter(d => d.category === 'active');
   const onboarding = deals.filter(d => d.category === 'onboarding');
   const won        = deals.filter(d => d.category === 'won');
@@ -328,21 +328,25 @@ function buildDashboard(deals) {
     newByMonth[key] = (newByMonth[key]||0) + 1;
   }
 
-  let changes = null;
-  if (snapshot) {
-    const prevById = Object.fromEntries((snapshot.deals||[]).map(d => [d.id, d]));
-    const currById = Object.fromEntries(deals.map(d => [d.id, d]));
-    changes = {
-      prev_date:     snapshot.date,
-      prev_kpis:     snapshot.kpis,
-      new_count:     deals.filter(d => !prevById[d.id]).length,
-      removed_count: (snapshot.deals||[]).filter(d => !currById[d.id]).length,
-      new_won:       deals.filter(d => d.category==='won' && prevById[d.id] && prevById[d.id].category!=='won'),
-      stage_changes: deals
-        .filter(d => prevById[d.id] && prevById[d.id].stage !== d.stage)
-        .map(d => ({ ...d, prev_stage: prevById[d.id].stage })),
-    };
-  }
+  // ── WoW: compute from date_created / date_updated — no external storage needed ─
+  const DAY = 86400000;
+  const now = Date.now();
+  const thisWeekCutoff = now - 7  * DAY;
+  const lastWeekCutoff = now - 14 * DAY;
+  const inThis = d => d && new Date(d).getTime() >= thisWeekCutoff;
+  const inLast = d => { if (!d) return false; const t = new Date(d).getTime(); return t >= lastWeekCutoff && t < thisWeekCutoff; };
+
+  const changes = {
+    new_this_week:        deals.filter(d => inThis(d.date_created)),
+    new_last_week:        deals.filter(d => inLast(d.date_created)),
+    won_this_week:        deals.filter(d => d.category === 'won'                && inThis(d.date_updated)),
+    won_last_week:        deals.filter(d => d.category === 'won'                && inLast(d.date_updated)),
+    lost_this_week:       deals.filter(d => d.category === 'lost'               && inThis(d.date_updated)),
+    lost_last_week:       deals.filter(d => d.category === 'lost'               && inLast(d.date_updated)),
+    onboarding_this_week: deals.filter(d => d.category === 'onboarding'         && inThis(d.date_updated)),
+    champion_this_week:   deals.filter(d => d.stage    === 'Champion Confirmed'  && inThis(d.date_updated)),
+    active_updated:       deals.filter(d => d.category === 'active'             && inThis(d.date_updated)),
+  };
 
   const kpis = {
     total:            deals.length,

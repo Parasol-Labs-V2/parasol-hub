@@ -1043,32 +1043,35 @@ async function renderMeetings() {
 // ─── renderWoW — Tab 3 ──────────────────────────────────────────────────────────
 function renderWoW() {
   const k  = dashData.kpis;
-  const ch = dashData.changes;
+  const ch = dashData.changes || {};
   const nb = dashData.new_by_month || {};
 
-  const deltaHTML = (curr, prev, prefix='') => {
-    if (prev === undefined || prev === null) return '<span class="delta neu">—</span>';
+  const newThis  = ch.new_this_week        || [];
+  const newLast  = ch.new_last_week        || [];
+  const wonThis  = ch.won_this_week        || [];
+  const wonLast  = ch.won_last_week        || [];
+  const lostThis = ch.lost_this_week       || [];
+  const lostLast = ch.lost_last_week       || [];
+  const onbThis  = ch.onboarding_this_week || [];
+  const chmpThis = ch.champion_this_week   || [];
+  const actUpd   = ch.active_updated       || [];
+
+  const delta = (curr, prev) => {
     const d = curr - prev;
-    const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'neu';
-    const sign = d > 0 ? '+' : '';
-    return `<span class="delta ${cls}">${sign}${prefix}${typeof d==='number'&&d!==Math.floor(d)?d.toFixed(0):d}</span>`;
+    if (d === 0) return '<span class="delta neu">0</span>';
+    const cls = d > 0 ? 'pos' : 'neg';
+    return `<span class="delta ${cls}">${d > 0 ? '+' : ''}${d}</span>`;
   };
 
-  const prevDate  = ch?.prev_date || '—';
-  const prevKPIs  = ch?.prev_kpis || {};
-  const newWon    = ch?.new_won   || [];
-  const stageCh   = ch?.stage_changes || [];
-
-  // Stage movement rows for chart
   const movements = [
-    { label:'New Added',     count: ch?.new_count     || 0, color:'#00695C' },
-    { label:'Removed',       count: ch?.removed_count || 0, color:'#9CA3AF' },
-    { label:'→ Closed Won',  count: newWon.length,          color:'#16A34A' },
-    { label:'→ Closed Lost', count: stageCh.filter(d=>d.category==='lost').length, color:'#E8231A' },
-    { label:'→ Onboarding',  count: stageCh.filter(d=>d.category==='onboarding').length, color:'#7C3AED' },
-    { label:'→ Champion',    count: stageCh.filter(d=>d.stage==='Champion Confirmed').length, color:'#F5C800' },
+    { label: 'New Added',      count: newThis.length,  color: '#00695C' },
+    { label: '→ Closed Won',   count: wonThis.length,  color: '#16A34A' },
+    { label: '→ Closed Lost',  count: lostThis.length, color: '#E8231A' },
+    { label: '→ Onboarding',   count: onbThis.length,  color: '#7C3AED' },
+    { label: '→ Champion',     count: chmpThis.length, color: '#F5C800' },
+    { label: 'Active Updated', count: actUpd.length,   color: '#1B9BF0' },
   ];
-  const maxMov = Math.max(...movements.map(m=>m.count), 1);
+  const maxMov = Math.max(...movements.map(m => m.count), 1);
 
   const movRows = movements.map(m => `
     <div class="movement-row">
@@ -1079,39 +1082,39 @@ function renderWoW() {
       <div style="width:28px;text-align:right;font-size:12px;font-weight:700;color:var(--gray)">${m.count}</div>
     </div>`).join('');
 
-  const wonRows = newWon.slice(0,20).map(d => `<tr>
+  const wonRows = wonThis.slice(0,20).map(d => `<tr>
     <td class="col-company">${d.company}</td>
-    <td class="mono">${d.monthly_value>0?fmtFull(d.monthly_value)+'/mo':'—'}</td>
-    <td style="font-size:12px;color:var(--gray)">${d.prev_stage||'New'}</td>
-  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No new won deals this week</td></tr>`;
+    <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '—'}</td>
+    <td style="font-size:11px;color:var(--gray)">${d.date_updated ? d.date_updated.slice(0,10) : '—'}</td>
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No closed won deals in last 7 days</td></tr>`;
 
-  const chRows = stageCh.slice(0,20).map(d => `<tr>
+  const newRows = newThis.sort((a,b) => b.monthly_value - a.monthly_value).slice(0,20).map(d => `<tr>
     <td class="col-company">${d.company}</td>
-    <td style="font-size:12px;color:var(--gray)">${d.prev_stage||'—'}</td>
+    <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '—'}</td>
     <td>${stageBadge(d.category, d.stage)}</td>
-  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No stage changes detected</td></tr>`;
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No new deals added in last 7 days</td></tr>`;
 
   $('panel-3').innerHTML = `
     <div class="kpi-grid">
       <div class="kpi-card blue">
-        <div class="kpi-label">Total Deals</div>
-        <div class="kpi-value">${k.total} ${deltaHTML(k.total, prevKPIs.total)}</div>
-        <div class="kpi-prev">Was ${prevKPIs.total||'—'} on ${prevDate}</div>
-      </div>
-      <div class="kpi-card red">
-        <div class="kpi-label">Active Pipeline</div>
-        <div class="kpi-value">${fmtMRR(k.active_mrr)} ${deltaHTML(k.active_mrr, prevKPIs.active_mrr, '$')}</div>
-        <div class="kpi-prev">Was ${prevKPIs.active_mrr ? fmtMRR(prevKPIs.active_mrr) : '—'}/mo on ${prevDate}</div>
+        <div class="kpi-label">New Added This Week</div>
+        <div class="kpi-value">${newThis.length} ${delta(newThis.length, newLast.length)}</div>
+        <div class="kpi-prev">${newLast.length} added last week</div>
       </div>
       <div class="kpi-card green">
-        <div class="kpi-label">Closed Won</div>
-        <div class="kpi-value">${k.won_count} ${deltaHTML(k.won_count, prevKPIs.won_count)}</div>
-        <div class="kpi-prev">Was ${prevKPIs.won_count||'—'} · ${prevKPIs.won_mrr ? fmtMRR(prevKPIs.won_mrr) : '—'}/mo on ${prevDate}</div>
+        <div class="kpi-label">Closed Won This Week</div>
+        <div class="kpi-value">${wonThis.length} ${delta(wonThis.length, wonLast.length)}</div>
+        <div class="kpi-prev">${wonLast.length} closed won last week</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">Closed Lost This Week</div>
+        <div class="kpi-value">${lostThis.length} ${delta(lostThis.length, lostLast.length)}</div>
+        <div class="kpi-prev">${lostLast.length} closed lost last week</div>
       </div>
       <div class="kpi-card black">
-        <div class="kpi-label">Demos Held</div>
-        <div class="kpi-value">${dashData.deals.filter(d=>d.demo_completed).length}</div>
-        <div class="kpi-prev">Snapshot: ${prevDate}</div>
+        <div class="kpi-label">→ Champion / Onboarding</div>
+        <div class="kpi-value">${chmpThis.length + onbThis.length}</div>
+        <div class="kpi-prev">${chmpThis.length} champion · ${onbThis.length} onboarding</div>
       </div>
     </div>
 
@@ -1126,7 +1129,7 @@ function renderWoW() {
         </div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Stage Movements — ${prevDate} → today</div>
+        <div class="chart-title">Stage Movements — Last 7 Days</div>
         ${movRows}
       </div>
     </div>
@@ -1134,32 +1137,31 @@ function renderWoW() {
     <div class="g2">
       <div class="table-wrap">
         <div class="section-head">
-          <span class="section-title">New Closed Won</span>
-          <span class="section-badge">${newWon.length} deal${newWon.length!==1?'s':''}</span>
+          <span class="section-title">Closed Won — Last 7 Days</span>
+          <span class="section-badge">${wonThis.length} deal${wonThis.length!==1?'s':''}</span>
         </div>
         <div class="tscroll">
           <table>
-            <thead><tr><th>Company</th><th>Value</th><th>Previous Stage</th></tr></thead>
+            <thead><tr><th>Company</th><th>Value</th><th>Date</th></tr></thead>
             <tbody>${wonRows}</tbody>
           </table>
         </div>
       </div>
       <div class="table-wrap">
         <div class="section-head">
-          <span class="section-title">Notable Status Changes</span>
-          <span class="section-badge">${stageCh.length} change${stageCh.length!==1?'s':''}</span>
+          <span class="section-title">New Deals Added — Last 7 Days</span>
+          <span class="section-badge">${newThis.length} deal${newThis.length!==1?'s':''}</span>
         </div>
         <div class="tscroll">
           <table>
-            <thead><tr><th>Company</th><th>Was</th><th>Now</th></tr></thead>
-            <tbody>${chRows}</tbody>
+            <thead><tr><th>Company</th><th>Value</th><th>Stage</th></tr></thead>
+            <tbody>${newRows}</tbody>
           </table>
         </div>
       </div>
     </div>
   `;
 
-  // Draw the monthly chart after DOM is ready
   requestAnimationFrame(() => drawCreatedChart('created-chart', nb));
 }
 
