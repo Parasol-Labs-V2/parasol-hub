@@ -17,7 +17,7 @@ const FILE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 for (const dir of [CACHE_DIR, SNAPSHOTS_DIR]) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch {}
 }
 
 // ─── In-memory state ───────────────────────────────────────────────────────────
@@ -44,8 +44,12 @@ function readFileCache() {
 }
 
 function writeFileCache(data) {
-  fs.writeFileSync(CACHE_FILE, JSON.stringify({ saved_at: new Date().toISOString(), data }));
-  console.log('File cache written:', CACHE_FILE);
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({ saved_at: new Date().toISOString(), data }));
+    console.log('File cache written:', CACHE_FILE);
+  } catch (e) {
+    console.log('File cache skipped (read-only fs):', e.code);
+  }
 }
 
 function deleteFileCache() {
@@ -394,14 +398,18 @@ function buildDashboard(deals, snapshot) {
 
 // ─── Snapshot helpers ──────────────────────────────────────────────────────────
 function saveSnapshot(data) {
-  const today = new Date().toISOString().split('T')[0];
-  const file  = path.join(SNAPSHOTS_DIR, `${today}.json`);
-  if (fs.existsSync(file)) return;
-  fs.writeFileSync(file, JSON.stringify({
-    date: today, kpis: data.kpis,
-    deals: data.deals.map(d => ({ id:d.id, company:d.company, stage:d.stage, category:d.category, monthly_value:d.monthly_value })),
-  }, null, 2));
-  console.log('Snapshot saved:', today);
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const file  = path.join(SNAPSHOTS_DIR, `${today}.json`);
+    if (fs.existsSync(file)) return;
+    fs.writeFileSync(file, JSON.stringify({
+      date: today, kpis: data.kpis,
+      deals: data.deals.map(d => ({ id:d.id, company:d.company, stage:d.stage, category:d.category, monthly_value:d.monthly_value })),
+    }, null, 2));
+    console.log('Snapshot saved:', today);
+  } catch (e) {
+    console.log('Snapshot skipped (read-only fs):', e.code);
+  }
 }
 
 function loadLatestSnapshot() {
