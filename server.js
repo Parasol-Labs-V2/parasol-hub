@@ -205,7 +205,7 @@ async function fetchPage(skip) {
 // Fetch opportunity custom fields directly — lead endpoint omits them
 async function fetchOppCustomFields() {
   const base = `https://api.close.com/api/v1/opportunity/?pipeline_id=${PARASOL_PIPELINE_ID}&_limit=100&_fields=id,custom`;
-  let all = [], skip = 0, total = null;
+  let all = [], skip = 0;
   while (true) {
     const res = await fetch(`${base}&_skip=${skip}`, { headers: authHeaders() });
     if (!res.ok) throw new Error(`Opp custom fetch ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -217,7 +217,16 @@ async function fetchOppCustomFields() {
     skip += 100;
   }
   console.log(`\nFetched opp custom fields for ${all.length} Parasol opps`);
-  return Object.fromEntries(all.map(o => [o.id, o.custom || {}]));
+
+  // Close.io returns custom fields as top-level "custom.cf_xxx" keys (Layout B),
+  // not as a nested opp.custom object — merge both layouts into one flat map.
+  return Object.fromEntries(all.map(o => {
+    const merged = { ...(o.custom || {}) };
+    for (const [k, v] of Object.entries(o)) {
+      if (k.startsWith('custom.')) merged[k.slice('custom.'.length)] = v;
+    }
+    return [o.id, merged];
+  }));
 }
 
 async function fetchAllLeads() {
@@ -382,6 +391,19 @@ async function fetchAndCache() {
     const allLeads     = await fetchAllLeads();
     const oppCustomMap = await fetchOppCustomFields();
     const deals        = processLeads(allLeads, oppCustomMap);
+
+    // Confirm demo fields are being read
+    const scheduled = deals.filter(d => d.demo_status === 'Scheduled');
+    const withDate  = deals.filter(d => d.demo_date);
+    console.log(`Demo Status=Scheduled: ${scheduled.length} deals`);
+    console.log(`Demo Date set: ${withDate.length} deals`);
+    if (scheduled.length > 0) {
+      console.log('Sample scheduled meetings:');
+      scheduled.slice(0, 5).forEach(d =>
+        console.log(`  ${d.company} | ${d.demo_date} | ${d.stage}`)
+      );
+    }
+
     const data         = buildDashboard(deals);
     _cache = data;
     fetchStatus.status = 'ready';
