@@ -414,53 +414,6 @@ function switchTab(i) {
   if (i === 5) renderAllDeals();
 }
 
-// ─── Progress helpers ──────────────────────────────────────────────────────────
-function showFetchProgress(s) {
-  const pct     = s.pct || 0;
-  const fetched = (s.fetched || 0).toLocaleString();
-  const total   = s.total > 0 ? s.total.toLocaleString() : '…';
-  const html = `
-    <div class="loading-wrap">
-      <div style="text-align:center;max-width:400px;width:100%">
-        <div class="spinner" style="margin:0 auto 18px"></div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:10px;color:var(--black)">Loading Close.io data…</div>
-        <div style="background:var(--gray-light);border-radius:8px;height:8px;overflow:hidden;margin-bottom:10px">
-          <div id="progress-bar" style="height:100%;background:var(--red);border-radius:8px;transition:width .4s;width:${pct}%"></div>
-        </div>
-        <div id="progress-text" style="font-size:13px;color:var(--gray);margin-bottom:6px">
-          ${s.total > 0 ? `${fetched} / ${total} leads fetched (${pct}%)` : 'Starting fetch…'}
-        </div>
-        <div style="font-size:11px;color:#9CA3AF">First load: ~60–90 sec &nbsp;·&nbsp; Future loads within 30 min: instant</div>
-      </div>
-    </div>`;
-  for (let i = 0; i < 6; i++) { const p = $(`panel-${i}`); if (p) p.innerHTML = html; }
-}
-
-function updateProgress(s) {
-  const bar = $('progress-bar');
-  const txt = $('progress-text');
-  if (bar) bar.style.width = (s.pct || 0) + '%';
-  if (txt && s.total > 0) {
-    txt.textContent = `${s.fetched.toLocaleString()} / ${s.total.toLocaleString()} leads fetched (${s.pct}%)`;
-  }
-}
-
-function pollUntilReady() {
-  return new Promise((resolve, reject) => {
-    const tick = async () => {
-      try {
-        const res = await fetch('/api/status');
-        const s   = await res.json();
-        if (s.status === 'error')  { reject(new Error(s.error || 'Fetch failed')); return; }
-        if (s.status === 'ready')  { resolve(); return; }
-        updateProgress(s);
-        setTimeout(tick, 2000);
-      } catch (e) { reject(e); }
-    };
-    setTimeout(tick, 2000);
-  });
-}
-
 // ─── Fetch & render ─────────────────────────────────────────────────────────────
 async function fetchAndRender(force = false) {
   const btn = $('refresh-btn');
@@ -468,18 +421,8 @@ async function fetchAndRender(force = false) {
   try {
     const url = force ? '/api/dashboard?refresh=1' : '/api/dashboard';
     const res = await fetch(url);
-    const body = await res.json();
-
-    if (res.status === 202) {
-      // Server is still fetching — show progress UI and poll
-      showFetchProgress(body);
-      await pollUntilReady();
-      // Data is ready — fetch it now
-      const res2  = await fetch('/api/dashboard');
-      dashData = await res2.json();
-    } else {
-      dashData = body;
-    }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
+    dashData = await res.json();
 
     updateHeader();
     if (activeTab === 0) renderPipeline();
@@ -495,7 +438,7 @@ async function fetchAndRender(force = false) {
     const upd = $('updated-time');
     if (upd) upd.textContent = `Updated ${hh}:${mm}:${ss}${dashData.cached ? ' (cached)' : ''}`;
   } catch(e) {
-    $('panel-0').innerHTML = `<div class="error-box">⚠ Failed to load: ${e.message}</div>`;
+    for (let i = 0; i < 6; i++) { const p = $(`panel-${i}`); if (p) p.innerHTML = `<div class="error-box">⚠ Failed to load: ${e.message}</div>`; }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
   }
@@ -1167,49 +1110,17 @@ function renderWoW() {
 
 // ─── renderPipelineReview — Tab 4 ───────────────────────────────────────────────
 function renderPipelineReview() {
-  const deals = dashData.pipeline_review || [];
-  const sum   = deals.reduce((s,d) => s + d.monthly_value, 0);
-
-  const stageBadgeForPR = (cat, stage) => {
-    const colorMap = {
-      'Champion Confirmed':        'sb-champion',
-      'Website Changes Needed':    'sb-onboarding',
-      'Registration Approved':     'sb-won',
-      'Registration Pending':      'sb-onboarding',
-      'Active Evaluation':         'sb-active',
-      'Account Created':           'sb-onboarding',
-      'Meeting Scheduled':         'sb-active',
-    };
-    const cls = colorMap[stage] || 'sb-active';
-    return `<span class="sb ${cls}">${stage}</span>`;
-  };
-
-  const cards = deals.map(d => `
-    <div class="pr-card">
-      <div class="pr-head">
-        <div>
-          <div class="pr-company">${d.company}</div>
-          <div style="margin-top:5px">${stageBadgeForPR(d.category, d.stage)}</div>
-        </div>
-        <div class="pr-val">${d.monthly_value > 0 ? fmtFull(d.monthly_value) + ' monthly' : '—'}</div>
-      </div>
-      <div class="pr-body">
-        <div class="pr-nxt-lbl">Next Steps</div>
-        ${d.pipeline_review
-          ? `<div class="pr-nxt-text">${d.pipeline_review.replace(/\n/g,'<br>')}</div>`
-          : `<div class="pr-empty">No next steps recorded yet.</div>`}
-      </div>
-    </div>`).join('');
-
   $('panel-4').innerHTML = `
-    <div class="alert-bar">
-      <div class="blink-dot"></div>
-      <div>🔍 <strong>${deals.length}</strong> deals tracked
-        &nbsp;·&nbsp; Total pipeline value: <strong>${fmtMRR(sum)}/mo</strong>
-        &nbsp;·&nbsp; All have next steps recorded
+    <div class="empty-state" style="padding:60px 20px">
+      <div style="font-size:32px;margin-bottom:16px">🔍</div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:8px">Pipeline Review Unavailable</div>
+      <div style="color:var(--gray);font-size:13px;max-width:420px;margin:0 auto;line-height:1.6">
+        Pipeline Review and A2P Status notes require fetching full lead records from Close.io.
+        That fetch (~19,000 leads) exceeds the serverless time limit, so this tab is disabled.
+        <br><br>
+        Use Close.io directly to review pipeline notes.
       </div>
     </div>
-    ${deals.length ? cards : '<div class="empty-state">No pipeline review notes found.<br>Add text to the "Pipeline Review" custom field in Close.io.</div>'}
   `;
 }
 
