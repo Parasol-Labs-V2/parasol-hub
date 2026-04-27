@@ -83,6 +83,12 @@ function makeSortable(tableEl) {
   });
 }
 
+function fmt$(n) {
+  if (!n && n !== 0) return '$0';
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
+  return '$' + Math.round(n).toLocaleString();
+}
 window.ParasolUtils = { fmt$, fmtNum, fmtDate, ageDays, escHtml, isNextWeek, isPast14Days, isLast7Days, exportCsv, makeSortable };
 
 /* ─── Tab switching ────────────────────────────────────────────────────────── */
