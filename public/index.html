@@ -4,92 +4,100 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parasol Hub</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: #FAF5EE; }
+.hub-header {
+  background: #111111;
+  padding: 0 24px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  border-bottom: 3px solid #E8231A;
+}
+.hub-logo { font-size: 1.4rem; font-weight: 700; color: white; }
+.hub-logo span { color: #E8231A; }
+.hub-subtitle { color: #888; font-size: 0.8rem; margin-right: auto; }
+.client-btns { display: flex; gap: 8px; }
+.client-btn {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 2px solid white;
+  background: transparent;
+  color: white;
+  transition: all 0.15s;
+}
+.client-btn.active {
+  background: #E8231A;
+  border-color: #E8231A;
+  color: white;
+}
+.client-btn:hover:not(.active) { background: rgba(255,255,255,0.1); }
+.dashboard-frame {
+  display: none;
+  width: 100%;
+  height: calc(100vh - 63px);
+  border: none;
+}
+.dashboard-frame.active { display: block; }
+.duet-container {
+  display: none;
+  padding: 0;
+}
+.duet-container.active { display: block; }
+</style>
 </head>
 <body>
-
-<!-- ─── Header ──────────────────────────────────────────────────────────────── -->
-<header class="site-header">
-  <div class="header-top">
-    <div class="header-brand">
-      <div class="parasol-logo"></div>
-      <div class="brand-text">
-        <span class="brand-parasol">Parasol</span><span class="brand-hub"> Hub</span>
-        <div class="brand-sub">Client Dashboard Portal</div>
-      </div>
-    </div>
-    <div class="client-switcher">
-      <button class="client-btn active" data-client="messagedesk">MessageDesk</button>
-      <button class="client-btn" data-client="duet">Duet</button>
-    </div>
-    <div class="header-right">
-      <span class="updated-time" id="updated-time"></span>
-      <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
-    </div>
+<header class="hub-header">
+  <div class="hub-logo"><span>Parasol</span> Hub</div>
+  <div class="hub-subtitle">Client Dashboard Portal</div>
+  <div class="client-btns">
+    <button class="client-btn active" onclick="switchClient('messagedesk')">MessageDesk</button>
+    <button class="client-btn" onclick="switchClient('duet')">Duet</button>
   </div>
-  <div class="header-divider"></div>
 </header>
 
-<!-- ─── Loading ─────────────────────────────────────────────────────────────── -->
-<div class="loading-overlay" id="loading-overlay">
-  <div class="spinner"></div>
-  <div class="loading-text">Loading data…</div>
-</div>
+<!-- MessageDesk: iframe to standalone dashboard -->
+<iframe 
+  id="frame-messagedesk"
+  class="dashboard-frame active"
+  src="https://messagedesk-dashboard.vercel.app/"
+></iframe>
 
-<!-- ─── MessageDesk Panel ────────────────────────────────────────────────────── -->
-<div class="client-panel" id="panel-messagedesk">
-  <nav class="tabs-bar">
-    <div class="tabs-inner" id="md-tabs-nav">
-      <button class="tab-btn active" data-tab="md-tab1">Active Pipeline</button>
-      <button class="tab-btn" data-tab="md-tab2">Funnel Overview</button>
-      <button class="tab-btn" data-tab="md-tab3">Meetings Next Week</button>
-      <button class="tab-btn" data-tab="md-tab4">WoW Changes</button>
-      <button class="tab-btn" data-tab="md-tab5">2K+ Pipeline Review</button>
-      <button class="tab-btn" data-tab="md-tab6">All Deals</button>
+<!-- Duet: embedded dashboard -->
+<div id="frame-duet" class="duet-container">
+  <div id="duet-app" style="min-height: calc(100vh - 63px);">
+    <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#888;">
+      <div>Loading Duet data...</div>
     </div>
-  </nav>
-  <main class="main-content">
-    <div class="tab-panel active" id="md-tab1"></div>
-    <div class="tab-panel" id="md-tab2"></div>
-    <div class="tab-panel" id="md-tab3"></div>
-    <div class="tab-panel" id="md-tab4"></div>
-    <div class="tab-panel" id="md-tab5"></div>
-    <div class="tab-panel" id="md-tab6"></div>
-  </main>
+  </div>
 </div>
 
-<!-- ─── Duet Panel ───────────────────────────────────────────────────────────── -->
-<div class="client-panel hidden" id="panel-duet">
-  <nav class="tabs-bar">
-    <div class="tabs-inner" id="duet-tabs-nav">
-      <button class="tab-btn active" data-tab="duet-tab1">Active Pipeline</button>
-      <button class="tab-btn" data-tab="duet-tab2">Funnel Overview</button>
-      <button class="tab-btn" data-tab="duet-tab3">Meetings Next Week</button>
-      <button class="tab-btn" data-tab="duet-tab4">WoW Changes</button>
-      <button class="tab-btn" data-tab="duet-tab5">Pipeline Review</button>
-      <button class="tab-btn" data-tab="duet-tab6">All Deals</button>
-    </div>
-  </nav>
-  <main class="main-content">
-    <div class="tab-panel active" id="duet-tab1"></div>
-    <div class="tab-panel" id="duet-tab2"></div>
-    <div class="tab-panel" id="duet-tab3"></div>
-    <div class="tab-panel" id="duet-tab4"></div>
-    <div class="tab-panel" id="duet-tab5"></div>
-    <div class="tab-panel" id="duet-tab6"></div>
-  </main>
-</div>
-
-<!-- ─── Footer ──────────────────────────────────────────────────────────────── -->
-<footer class="site-footer">Built by Parasol</footer>
-
-<script src="app-core.js"></script>
-<script src="messagedesk-tabs1-3.js"></script>
-<script src="messagedesk-tabs4-6.js"></script>
 <script src="duet-tabs1-3.js"></script>
 <script src="duet-tabs4-6.js"></script>
+<script src="app-core.js"></script>
+
+<script>
+function switchClient(client) {
+  document.querySelectorAll('.client-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.dashboard-frame, .duet-container').forEach(f => f.classList.remove('active'));
+  
+  event.target.classList.add('active');
+  document.getElementById('frame-' + client).classList.add('active');
+  
+  if (client === 'duet' && !window.duetLoaded) {
+    window.duetLoaded = true;
+    loadDuet();
+  }
+}
+</script>
 </body>
 </html>
