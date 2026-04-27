@@ -1,76 +1,39 @@
 require('dotenv').config();
 const express = require('express');
-const fetch   = require('node-fetch');
-const path    = require('path');
+const axios = require('axios');
+const cors = require('cors');
+const path = require('path');
 
-const app  = express();
-const PORT = process.env.PORT || 3000;
-const CLOSE_API_KEY   = process.env.CLOSE_API_KEY   || '';
-const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY || '';
-const CLOSE_BASE      = 'https://api.close.com/api/v1';
-const HUBSPOT_BASE    = 'https://api.hubapi.com';
-
+const app = express();
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── Simple cache ──────────────────────────────────────────────────────────────
-const CACHE_TTL = 5 * 60 * 1000;
-const cache = {};
-function getCache(key) {
-  const e = cache[key];
-  if (e && Date.now() - e.ts < CACHE_TTL) return e.data;
-  return null;
-}
-function setCache(key, data) { cache[key] = { data, ts: Date.now() }; }
+// ─── Close.io setup ────────────────────────────────────────────────────────────
+const CLOSE_API_KEY = process.env.CLOSE_API_KEY;
+const CLOSE_BASE = 'https://api.close.com/api/v1';
 
-// ─── Close.io helpers ──────────────────────────────────────────────────────────
-function closeAuth() {
-  return { Authorization: `Basic ${Buffer.from(CLOSE_API_KEY + ':').toString('base64')}` };
-}
+const closeApi = axios.create({
+  baseURL: CLOSE_BASE,
+  auth: { username: CLOSE_API_KEY, password: '' },
+  timeout: 30000,
+});
 
-async function closeFetch(endpoint, params = {}) {
-  const url = new URL(CLOSE_BASE + endpoint);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: closeAuth(), timeout: 30000 });
-  if (!res.ok) throw new Error(`Close ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
-async function closePageAll(endpoint, params = {}) {
+async function fetchAllPages(endpoint, params = {}) {
   const results = [];
   let skip = 0;
+  const limit = 100;
   while (true) {
-    const data = await closeFetch(endpoint, { ...params, _limit: 100, _skip: skip });
+    const res = await closeApi.get(endpoint, { params: { ...params, _limit: limit, _skip: skip } });
+    const data = res.data;
     results.push(...(data.data || []));
     if (!data.has_more) break;
-    skip += 100;
+    skip += limit;
   }
   return results;
 }
 
-// ─── HubSpot helpers ───────────────────────────────────────────────────────────
-function hsHeaders() {
-  return { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' };
-}
-
-async function hsFetch(path, params = {}) {
-  const url = new URL(HUBSPOT_BASE + path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: hsHeaders(), timeout: 30000 });
-  if (!res.ok) throw new Error(`HubSpot ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
-async function hsPost(path, body) {
-  const res = await fetch(HUBSPOT_BASE + path, {
-    method: 'POST', headers: hsHeaders(), body: JSON.stringify(body), timeout: 30000,
-  });
-  if (!res.ok) throw new Error(`HubSpot POST ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
-// ─── MessageDesk: toMonthly ────────────────────────────────────────────────────
-function mdToMonthly(opp) {
+function toMonthly(opp) {
   const val = parseFloat(opp.value) || 0;
   const freq = (opp.value_period || '').toLowerCase();
   if (freq === 'annual') return val / 12;
@@ -84,114 +47,164 @@ function a2pStage(raw) {
   return m ? parseInt(m[1]) : 0;
 }
 
-// ─── MessageDesk dashboard ─────────────────────────────────────────────────────
+// ─── HubSpot setup ─────────────────────────────────────────────────────────────
+const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
+const HS_BASE = 'https://api.hubapi.com';
+
+async function hsFetch(path) {
+  const res = await axios.get(HS_BASE + path, {
+    headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}` },
+    timeout: 30000,
+  });
+  return res.data;
+}
+
+async function hsPost(path, body) {
+  const res = await axios.post(HS_BASE + path, body, {
+    headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' },
+    timeout: 30000,
+  });
+  return res.data;
+}
+
+// ─── Simple cache ──────────────────────────────────────────────────────────────
+const cache = {};
+function getCache(key) {
+  const e = cache[key];
+  if (!e) return null;
+  if (Date.now() - e.ts > 5 * 60 * 1000) return null;
+  return e.data;
+}
+function setCache(key, data) { cache[key] = { data, ts: Date.now() }; }
+
+// ─── MessageDesk ───────────────────────────────────────────────────────────────
 async function fetchMessageDeskDashboard() {
   const cached = getCache('messagedesk');
   if (cached) return cached;
 
-  const [opps, statuses] = await Promise.all([
-    closePageAll('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom,pipeline_id',
-      pipeline_id: 'pipe_1lXFBvtVQXtRgcjonTFr1Y',
-    }),
-    closeFetch('/status/opportunity/'),
-  ]);
+  const leads = await fetchAllPages('/lead/', {
+    query: 'has:opportunities',
+    _fields: 'id,display_name,opportunities,custom,contacts,date_created',
+  });
 
-  // Build status type map
-  const statusTypeMap = {};
-  (statuses.data || []).forEach(s => { statusTypeMap[s.id] = s.type || 'active'; });
+  const opps = await fetchAllPages('/opportunity/', {
+    _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
+  });
 
-  // Auto-detect A2P custom field (matches /^\d+\.\s+/)
+  const statusRes = await closeApi.get('/status/opportunity/');
+  const statuses = statusRes.data.data || [];
+
+  const leadMap = {};
+  for (const lead of leads) leadMap[lead.id] = lead;
+
   let a2pFieldId = null;
-  for (const opp of opps) {
-    const custom = opp.custom || {};
-    for (const [k, v] of Object.entries(custom)) {
-      if (typeof v === 'string' && /^\d+\.\s+/.test(v)) { a2pFieldId = k; break; }
+  let pipelineFieldId = null;
+  for (const lead of leads) {
+    if (lead.custom) {
+      for (const [k, v] of Object.entries(lead.custom)) {
+        if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
+          if (!a2pFieldId) a2pFieldId = k;
+        }
+      }
     }
-    if (a2pFieldId) break;
   }
 
-  // Classify opps
-  const active = [], won = [], lost = [];
+  const activeOpps = [], wonOpps = [], lostOpps = [];
+  let totalPipelineValue = 0, totalWonMRR = 0;
+
+  const statusTypeMap = {};
+  for (const s of statuses) statusTypeMap[s.id] = s.type;
+
   for (const opp of opps) {
-    const stype = statusTypeMap[opp.status_id] || opp.status_type || 'active';
-    const monthly = mdToMonthly(opp);
-    const custom = opp.custom || {};
-    const a2pRaw = a2pFieldId ? (custom[a2pFieldId] || '') : '';
-    const deal = {
-      id: opp.id, lead_id: opp.lead_id,
-      company: opp.lead_name || '',
-      status_label: opp.status_label || '',
-      status_id: opp.status_id || '',
+    const monthly = toMonthly(opp);
+    const lead = leadMap[opp.lead_id] || {};
+    const custom = lead.custom || {};
+
+    let a2pStatus = '';
+    let pipelineReview = '';
+    if (!a2pFieldId) {
+      for (const [k, v] of Object.entries(custom)) {
+        if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
+          a2pFieldId = k; a2pStatus = v; break;
+        }
+      }
+    } else {
+      a2pStatus = custom[a2pFieldId] || '';
+    }
+    if (!pipelineFieldId) {
+      for (const [k, v] of Object.entries(custom)) {
+        if (k !== a2pFieldId && typeof v === 'string' && v.length > 20) {
+          pipelineFieldId = k; pipelineReview = v; break;
+        }
+      }
+    } else {
+      pipelineReview = custom[pipelineFieldId] || '';
+    }
+
+    const created = new Date(opp.date_created);
+    const ageDays = Math.floor((Date.now() - created.getTime()) / 86400000);
+
+    const enriched = {
+      ...opp,
       monthly_value: monthly,
-      owner: opp.user_name || '',
-      a2p_stage: a2pStage(a2pRaw),
-      a2p_label: a2pRaw,
-      note: opp.note || '',
-      date_created: opp.date_created || '',
-      date_updated: opp.date_updated || '',
-      date_won: opp.date_won || null,
-      date_lost: opp.date_lost || null,
-      confidence: opp.confidence || 0,
-      age_days: Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000),
-      status_type: stype,
+      age_days: ageDays,
+      a2p_status: a2pStatus,
+      a2p_stage: a2pStage(a2pStatus),
+      pipeline_review: pipelineReview,
+      lead_display_name: opp.lead_name || lead.display_name || '',
     };
-    if (stype === 'won') won.push(deal);
-    else if (stype === 'lost') lost.push(deal);
-    else active.push(deal);
+
+    const sType = statusTypeMap[opp.status_id] || opp.status_type || '';
+    if (sType === 'won') { wonOpps.push(enriched); totalWonMRR += monthly; }
+    else if (sType === 'lost') { lostOpps.push(enriched); }
+    else { activeOpps.push(enriched); totalPipelineValue += monthly; }
   }
 
-  // Pipeline by status
+  activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
+
+  const wonCount = wonOpps.length, lostCount = lostOpps.length;
+  const closedTotal = wonCount + lostCount;
+  const winRate = closedTotal > 0 ? Math.round((wonCount / closedTotal) * 100) : 0;
+  const avgDealSize = wonCount > 0 ? Math.round(totalWonMRR / wonCount) : 0;
+
+  const a2pBreakdown = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const o of activeOpps) a2pBreakdown[o.a2p_stage] = (a2pBreakdown[o.a2p_stage] || 0) + 1;
+
   const pipelineByStatus = {};
-  for (const d of active) {
-    if (!pipelineByStatus[d.status_label]) pipelineByStatus[d.status_label] = { count: 0, mrr: 0 };
-    pipelineByStatus[d.status_label].count++;
-    pipelineByStatus[d.status_label].mrr += d.monthly_value;
+  for (const o of activeOpps) {
+    const label = o.status_label || 'Unknown';
+    if (!pipelineByStatus[label]) pipelineByStatus[label] = { count: 0, value: 0 };
+    pipelineByStatus[label].count++;
+    pipelineByStatus[label].value += o.monthly_value;
   }
 
-  // MRR by month (last 12 months)
   const mrrByMonth = {};
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    mrrByMonth[`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`] = 0;
+  for (const o of wonOpps) {
+    const d = new Date(o.date_won || o.date_updated);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    mrrByMonth[key] = (mrrByMonth[key] || 0) + o.monthly_value;
   }
-  for (const d of won) {
-    if (!d.date_won) continue;
-    const dt = new Date(d.date_won);
-    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
-    if (key in mrrByMonth) mrrByMonth[key] += d.monthly_value;
-  }
-
-  // A2P breakdown
-  const a2pBreakdown = {};
-  for (const d of active) {
-    const k = d.a2p_stage || 0;
-    if (!a2pBreakdown[k]) a2pBreakdown[k] = { count: 0, mrr: 0, label: d.a2p_label || `Stage ${k}` };
-    a2pBreakdown[k].count++;
-    a2pBreakdown[k].mrr += d.monthly_value;
-  }
-
-  const sumMrr = arr => arr.reduce((s, d) => s + d.monthly_value, 0);
-  const kpis = {
-    pipeline_mrr: sumMrr(active),
-    active_deals: active.length,
-    won_mrr: sumMrr(won),
-    win_rate: (active.length + won.length + lost.length) > 0
-      ? Math.round(won.length / (won.length + lost.length) * 100) || 0
-      : 0,
-    total_deals: opps.length,
-  };
 
   const result = {
-    kpis,
-    active_opportunities: active,
-    won_opportunities: won,
-    lost_opportunities: lost,
+    kpis: {
+      total_leads: leads.length,
+      active_opportunities: activeOpps.length,
+      pipeline_mrr: Math.round(totalPipelineValue),
+      won_mrr: Math.round(totalWonMRR),
+      win_rate: winRate,
+      avg_deal_size: avgDealSize,
+      won_count: wonCount,
+      lost_count: lostCount,
+      closed_total: closedTotal,
+    },
+    active_opportunities: activeOpps,
+    won_opportunities: wonOpps.slice(0, 50),
+    lost_opportunities: lostOpps.slice(0, 50),
     pipeline_by_status: pipelineByStatus,
     mrr_by_month: mrrByMonth,
     a2p_breakdown: a2pBreakdown,
-    field_ids: { a2p: a2pFieldId },
+    statuses,
+    field_ids: { a2p: a2pFieldId, pipeline_review: pipelineFieldId },
     updated_at: new Date().toISOString(),
   };
 
@@ -199,7 +212,7 @@ async function fetchMessageDeskDashboard() {
   return result;
 }
 
-// ─── Duet stage/owner maps ─────────────────────────────────────────────────────
+// ─── Duet ──────────────────────────────────────────────────────────────────────
 const DUET_STAGE_MAP = {
   '3446819577': 'New / Not Yet Contacted',
   '3446820538': 'Attempting Contact',
@@ -264,7 +277,6 @@ async function fetchDuetDeals() {
     } else break;
   }
 
-  // Resolve owners in parallel (dedupe)
   const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
   await Promise.all(ownerIds.map(id => resolveOwner(id)));
 
@@ -325,13 +337,9 @@ app.get('/api/duet/deals', async (req, res) => {
   }
 });
 
-// Catch-all: serve index.html
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-if (require.main === module) {
-  app.listen(PORT, () => console.log(`Parasol Hub → http://localhost:${PORT}`));
-}
-
-module.exports = app;
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Parasol Hub running on http://localhost:${PORT}`));
