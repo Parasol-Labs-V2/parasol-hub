@@ -1,14 +1,10 @@
-/* ─── State ────────────────────────────────────────────────────────────────── */
-const state = {
-  activeClient: 'messagedesk',
-  mdData:   null,
-  duetData: null,
-  mdActiveTab:   'md-tab1',
-  duetActiveTab: 'duet-tab1',
-};
-
-/* ─── Utils ────────────────────────────────────────────────────────────────── */
-// fmt$ moved to avoid conflict
+/* ─── Utils ─────────────────────────────────────────────────────────────────── */
+function fmt$(n) {
+  if (!n && n !== 0) return '$0';
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
+  return '$' + Math.round(n).toLocaleString();
+}
 function fmtNum(n) {
   if (!n && n !== 0) return '0';
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -31,161 +27,110 @@ function escHtml(s) {
 }
 function isNextWeek(dateStr) {
   if (!dateStr) return false;
-  const now  = new Date();
-  const day  = now.getDay();
-  const diff = day === 0 ? 1 : 8 - day;
-  const mon  = new Date(now); mon.setDate(now.getDate() + diff); mon.setHours(0,0,0,0);
-  const sun  = new Date(mon); sun.setDate(mon.getDate() + 6);   sun.setHours(23,59,59,999);
-  const dt   = new Date(dateStr);
-  return dt >= mon && dt <= sun;
+  const d = new Date(dateStr);
+  const now = Date.now();
+  return d.getTime() > now && d.getTime() < now + 7 * 86400000;
 }
 function isPast14Days(dateStr) {
   if (!dateStr) return false;
-  const dt = new Date(dateStr);
-  return dt >= new Date(Date.now() - 14 * 86400000);
+  const d = new Date(dateStr);
+  const now = Date.now();
+  return d.getTime() < now && d.getTime() > now - 14 * 86400000;
 }
 function isLast7Days(dateStr) {
   if (!dateStr) return false;
-  const dt = new Date(dateStr);
-  return dt >= new Date(Date.now() - 7 * 86400000);
+  const d = new Date(dateStr);
+  const now = Date.now();
+  return d.getTime() > now - 7 * 86400000 && d.getTime() <= now;
 }
 function exportCsv(rows, filename) {
-  if (!rows.length) return;
-  const keys = Object.keys(rows[0]);
-  const lines = [keys.join(','), ...rows.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = filename;
   a.click();
 }
-function makeSortable(tableEl) {
-  const ths = tableEl.querySelectorAll('th.sortable');
-  ths.forEach(th => {
-    th.addEventListener('click', () => {
-      const col = th.dataset.col;
-      const isNum = th.dataset.type === 'num';
-      const rows = Array.from(tableEl.querySelectorAll('tbody tr'));
-      const asc = th.dataset.asc !== 'true';
-      th.dataset.asc = asc;
-      ths.forEach(t => { delete t.dataset.asc; t.textContent = t.textContent.replace(/ [▲▼]$/,''); });
-      th.dataset.asc = asc;
-      th.textContent = th.textContent.replace(/ [▲▼]$/,'') + (asc ? ' ▲' : ' ▼');
+function makeSortable(tbodyId, headers) {
+  headers.forEach((col, i) => {
+    col.style.cursor = 'pointer';
+    col.addEventListener('click', () => {
+      const tbody = document.getElementById(tbodyId);
+      if (!tbody) return;
+      const asc = col.dataset.asc !== 'true';
+      col.dataset.asc = asc;
+      const rows = Array.from(tbody.querySelectorAll('tr'));
       rows.sort((a, b) => {
-        const av = a.dataset[col] || '';
-        const bv = b.dataset[col] || '';
-        if (isNum) return asc ? parseFloat(av) - parseFloat(bv) : parseFloat(bv) - parseFloat(av);
+        const av = a.cells[i]?.textContent.trim() || '';
+        const bv = b.cells[i]?.textContent.trim() || '';
+        const an = parseFloat(av.replace(/[^0-9.-]/g,'')), bn = parseFloat(bv.replace(/[^0-9.-]/g,''));
+        if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
         return asc ? av.localeCompare(bv) : bv.localeCompare(av);
       });
-      const tbody = tableEl.querySelector('tbody');
       rows.forEach(r => tbody.appendChild(r));
     });
   });
 }
 
-function fmt$(n) {
-  if (!n && n !== 0) return '$0';
-  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
-  return '$' + Math.round(n).toLocaleString();
-}
 window.ParasolUtils = { fmt$, fmtNum, fmtDate, ageDays, escHtml, isNextWeek, isPast14Days, isLast7Days, exportCsv, makeSortable };
 
-/* ─── Tab switching ────────────────────────────────────────────────────────── */
-function switchTab(navId, tabId) {
-  const nav = document.getElementById(navId);
-  nav.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
-  const panelPrefix = navId === 'md-tabs-nav' ? 'md-tab' : 'duet-tab';
-  document.querySelectorAll(`[id^="${panelPrefix}"]`).forEach(p => p.classList.toggle('active', p.id === tabId));
-}
-
-document.getElementById('md-tabs-nav').addEventListener('click', e => {
-  const btn = e.target.closest('.tab-btn');
-  if (!btn) return;
-  state.mdActiveTab = btn.dataset.tab;
-  switchTab('md-tabs-nav', btn.dataset.tab);
-  if (state.mdData) renderMdTab(btn.dataset.tab, state.mdData);
-});
-
-document.getElementById('duet-tabs-nav').addEventListener('click', e => {
-  const btn = e.target.closest('.tab-btn');
-  if (!btn) return;
-  state.duetActiveTab = btn.dataset.tab;
-  switchTab('duet-tabs-nav', btn.dataset.tab);
-  if (state.duetData) renderDuetTab(btn.dataset.tab, state.duetData);
-});
-
-/* ─── Client switching ─────────────────────────────────────────────────────── */
-document.querySelectorAll('.client-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const client = btn.dataset.client;
-    state.activeClient = client;
-    document.querySelectorAll('.client-btn').forEach(b => b.classList.toggle('active', b.dataset.client === client));
-    document.querySelectorAll('.client-panel').forEach(p => p.classList.toggle('hidden', p.id !== `panel-${client}`));
-    if (client === 'messagedesk' && !state.mdData) loadMessageDesk();
-    if (client === 'duet'        && !state.duetData) loadDuet();
-  });
-});
-
-/* ─── Loading overlay ──────────────────────────────────────────────────────── */
-let loadingCount = 0;
-function showLoading()  { loadingCount++; document.getElementById('loading-overlay').classList.remove('hidden'); }
-function hideLoading()  { loadingCount = Math.max(0, loadingCount - 1); if (!loadingCount) document.getElementById('loading-overlay').classList.add('hidden'); }
-
-/* ─── Timestamp ────────────────────────────────────────────────────────────── */
-function setUpdated(iso) {
-  const el = document.getElementById('updated-time');
-  if (!iso) { el.textContent = ''; return; }
-  el.textContent = 'Updated ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-/* ─── Data loaders ─────────────────────────────────────────────────────────── */
-async function loadMessageDesk(force = false) {
-  showLoading();
-  try {
-    const url = '/api/messagedesk/dashboard' + (force ? '?refresh=1' : '');
-    const r   = await fetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.mdData = await r.json();
-    setUpdated(state.mdData.updated_at);
-    renderMdTab(state.mdActiveTab, state.mdData);
-  } catch (e) {
-    console.error('MessageDesk load error:', e);
-  } finally { hideLoading(); }
-}
+/* ─── Duet loader ────────────────────────────────────────────────────────────── */
+let duetData = null;
 
 async function loadDuet(force = false) {
-  showLoading();
+  const app = document.getElementById('duet-app');
+  if (!app) return;
+  
+  app.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:300px;flex-direction:column;gap:12px;color:#888;">
+    <div style="width:36px;height:36px;border:3px solid #eee;border-top-color:#E8231A;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+    <div>Loading Duet data...</div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  </div>`;
+
   try {
-    const url = '/api/duet/deals' + (force ? '?refresh=1' : '');
-    const r   = await fetch(url);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.duetData = await r.json();
-    setUpdated(state.duetData.updated_at);
-    renderDuetTab(state.duetActiveTab, state.duetData);
-  } catch (e) {
-    console.error('Duet load error:', e);
-  } finally { hideLoading(); }
+    const url = force ? '/api/duet/deals?refresh=1' : '/api/duet/deals';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API error: ' + res.status);
+    duetData = await res.json();
+    renderDuetDashboard(duetData);
+  } catch(e) {
+    app.innerHTML = `<div style="padding:20px;color:#E8231A;">Error loading Duet data: ${e.message}</div>`;
+  }
 }
 
-/* ─── Refresh button ───────────────────────────────────────────────────────── */
-document.getElementById('refresh-btn').addEventListener('click', () => {
-  const btn = document.getElementById('refresh-btn');
-  btn.disabled = true;
-  btn.textContent = '↻ Refreshing…';
-  state.mdData   = null;
-  state.duetData = null;
-  const p = [];
-  if (state.activeClient === 'messagedesk') p.push(loadMessageDesk(true));
-  else p.push(loadDuet(true));
-  Promise.all(p).finally(() => { btn.disabled = false; btn.textContent = '↻ Refresh'; });
-});
+function renderDuetDashboard(data) {
+  const app = document.getElementById('duet-app');
+  if (!app) return;
 
-/* ─── Auto-refresh every 5 min ─────────────────────────────────────────────── */
-setInterval(() => {
-  if (state.activeClient === 'messagedesk') { state.mdData = null;   loadMessageDesk(); }
-  else                                       { state.duetData = null; loadDuet(); }
-}, 5 * 60 * 1000);
+  app.innerHTML = `
+    <div style="background:white;border-bottom:1px solid #eee;padding:0 24px;display:flex;gap:0;position:sticky;top:63px;z-index:99;">
+      ${['Active Pipeline','Funnel Overview','Meetings Next Week','WoW Changes','Pipeline Review','All Deals'].map((t,i) => 
+        `<div class="duet-tab ${i===0?'active':''}" onclick="switchDuetTab(${i})" data-tab="${i}" style="padding:12px 20px;cursor:pointer;border-bottom:3px solid ${i===0?'#E8231A':'transparent'};font-weight:500;color:${i===0?'#E8231A':'#888'};font-size:0.9rem;white-space:nowrap;">${t}</div>`
+      ).join('')}
+    </div>
+    <div style="padding:20px 24px 40px;max-width:1600px;margin:0 auto;">
+      <div id="duet-tab-content"></div>
+    </div>
+    <div style="text-align:center;padding:20px;color:#aaa;font-size:0.8rem;">Built by Parasol</div>
+  `;
 
-/* ─── Boot ─────────────────────────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => loadMessageDesk());
+  switchDuetTab(0);
+}
+
+function switchDuetTab(idx) {
+  document.querySelectorAll('.duet-tab').forEach((t, i) => {
+    t.style.borderBottomColor = i === idx ? '#E8231A' : 'transparent';
+    t.style.color = i === idx ? '#E8231A' : '#888';
+  });
+  const content = document.getElementById('duet-tab-content');
+  if (!content || !duetData) return;
+  const deals = duetData.deals || [];
+  const fns = [
+    () => window.renderDuetTab1(deals),
+    () => window.renderDuetTab2(deals),
+    () => window.renderDuetTab3(deals),
+    () => window.renderDuetTab4(deals),
+    () => window.renderDuetTab5(deals),
+    () => window.renderDuetTab6(deals),
+  ];
+  content.innerHTML = fns[idx] ? fns[idx]() : '<p>Coming soon</p>';
+}
