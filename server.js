@@ -91,7 +91,7 @@ async function fetchMessageDeskDashboard() {
 
   const [opps, statuses] = await Promise.all([
     closePageAll('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
+      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom,pipeline_id',
       pipeline_id: 'pipe_1lXFBvtVQXtRgcjonTFr1Y',
     }),
     closeFetch('/status/opportunity/'),
