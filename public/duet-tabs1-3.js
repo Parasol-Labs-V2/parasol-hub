@@ -10,7 +10,8 @@ function renderDuetTab(tabId, data) {
   }
 }
 
-const _du = window.ParasolUtils;
+// _du resolved at runtime via window.ParasolUtils
+function _du_get() { return window.ParasolUtils; }
 
 const DUET_ACTIVE_STAGES = new Set([
   'New / Not Yet Contacted','Attempting Contact','Parasol Engaged',
@@ -31,7 +32,7 @@ function fmtLives(n) {
 }
 function fmtSavings(n) {
   if (!n) return '—';
-  return _du.fmt$(n);
+  return _du_get().fmt$(n);
 }
 
 /* ─── Tab 1: Active Pipeline ───────────────────────────────────────────────── */
