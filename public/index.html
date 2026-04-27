@@ -7,22 +7,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', sans-serif; background: #FAF5EE; }
+body { font-family: 'Inter', sans-serif; background: #111; }
 .hub-header {
   background: #111111;
   padding: 0 24px;
-  height: 60px;
+  height: 56px;
   display: flex;
   align-items: center;
   gap: 24px;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
   border-bottom: 3px solid #E8231A;
 }
 .hub-logo { font-size: 1.4rem; font-weight: 700; color: white; }
 .hub-logo span { color: #E8231A; }
-.hub-subtitle { color: #888; font-size: 0.8rem; margin-right: auto; }
+.hub-subtitle { color: #666; font-size: 0.8rem; margin-right: auto; }
 .client-btns { display: flex; gap: 8px; }
 .client-btn {
   padding: 8px 20px;
@@ -35,24 +32,10 @@ body { font-family: 'Inter', sans-serif; background: #FAF5EE; }
   color: white;
   transition: all 0.15s;
 }
-.client-btn.active {
-  background: #E8231A;
-  border-color: #E8231A;
-  color: white;
-}
+.client-btn.active { background: #E8231A; border-color: #E8231A; }
 .client-btn:hover:not(.active) { background: rgba(255,255,255,0.1); }
-.dashboard-frame {
-  display: none;
-  width: 100%;
-  height: calc(100vh - 63px);
-  border: none;
-}
-.dashboard-frame.active { display: block; }
-.duet-container {
-  display: none;
-  padding: 0;
-}
-.duet-container.active { display: block; }
+.frame { display: none; width: 100%; height: calc(100vh - 59px); border: none; }
+.frame.active { display: block; }
 </style>
 </head>
 <body>
@@ -60,43 +43,20 @@ body { font-family: 'Inter', sans-serif; background: #FAF5EE; }
   <div class="hub-logo"><span>Parasol</span> Hub</div>
   <div class="hub-subtitle">Client Dashboard Portal</div>
   <div class="client-btns">
-    <button class="client-btn active" onclick="switchClient('messagedesk')">MessageDesk</button>
-    <button class="client-btn" onclick="switchClient('duet')">Duet</button>
+    <button class="client-btn active" onclick="switchClient('messagedesk', this)">MessageDesk</button>
+    <button class="client-btn" onclick="switchClient('duet', this)">Duet</button>
   </div>
 </header>
 
-<!-- MessageDesk: iframe to standalone dashboard -->
-<iframe 
-  id="frame-messagedesk"
-  class="dashboard-frame active"
-  src="https://messagedesk-dashboard.vercel.app/"
-></iframe>
-
-<!-- Duet: embedded dashboard -->
-<div id="frame-duet" class="duet-container">
-  <div id="duet-app" style="min-height: calc(100vh - 63px);">
-    <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#888;">
-      <div>Loading Duet data...</div>
-    </div>
-  </div>
-</div>
-
-<script src="duet-tabs1-3.js"></script>
-<script src="duet-tabs4-6.js"></script>
-<script src="app-core.js"></script>
+<iframe id="frame-messagedesk" class="frame active" src="https://messagedesk-dashboard.vercel.app/"></iframe>
+<iframe id="frame-duet" class="frame" src="https://duet-dashboard.vercel.app/"></iframe>
 
 <script>
-function switchClient(client) {
+function switchClient(client, btn) {
   document.querySelectorAll('.client-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.dashboard-frame, .duet-container').forEach(f => f.classList.remove('active'));
-  
-  event.target.classList.add('active');
+  document.querySelectorAll('.frame').forEach(f => f.classList.remove('active'));
+  btn.classList.add('active');
   document.getElementById('frame-' + client).classList.add('active');
-  
-  if (client === 'duet' && !window.duetLoaded) {
-    window.duetLoaded = true;
-    loadDuet();
-  }
 }
 </script>
 </body>
