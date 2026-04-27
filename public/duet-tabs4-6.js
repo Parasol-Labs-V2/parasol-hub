@@ -223,5 +223,3 @@ function renderDuetTab6(data) {
 }
 
 // Helper functions shared from duet-tabs1-3
-function fmtLives(n)   { return !n ? '—' : Number(n).toLocaleString(); }
-function fmtSavings(n) { return !n ? '—' : _duu.fmt$(n); }
