@@ -10,7 +10,7 @@ function renderMdTab(tabId, data) {
   }
 }
 
-const { fmt$, fmtDate, ageDays, escHtml, makeSortable } = window.ParasolUtils;
+
 
 /* ─── Tab 1: Active Pipeline ───────────────────────────────────────────────── */
 function renderMdTab1(data) {

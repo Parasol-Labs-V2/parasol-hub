@@ -9,12 +9,6 @@ const state = {
 
 /* ─── Utils ────────────────────────────────────────────────────────────────── */
 // fmt$ moved to avoid conflict
-// function fmt$(n) {
-  if (n === null || n === undefined || isNaN(n)) return '$0';
-  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
-  return '$' + Math.round(n).toLocaleString();
-}
 function fmtNum(n) {
   if (!n && n !== 0) return '0';
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
