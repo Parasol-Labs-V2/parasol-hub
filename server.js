@@ -92,6 +92,11 @@ async function fetchMessageDeskDashboard() {
     pipeline_id: 'pipe_1lXFBvtVQXtRgcjonTFr1Y',
   });
 
+  // Filter to Parasol pipeline only
+  const PARASOL_PIPELINE = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+  const filteredOpps = opps.filter(o => o.pipeline_id === PARASOL_PIPELINE);
+  const oppsToProcess = filteredOpps.length > 0 ? filteredOpps : opps;
+
   const statusRes = await closeApi.get('/status/opportunity/');
   const statuses = statusRes.data.data || [];
 
@@ -116,7 +121,7 @@ async function fetchMessageDeskDashboard() {
   const statusTypeMap = {};
   for (const s of statuses) statusTypeMap[s.id] = s.type;
 
-  for (const opp of opps) {
+  for (const opp of oppsToProcess) {
     const monthly = toMonthly(opp);
     const lead = leadMap[opp.lead_id] || {};
     const custom = lead.custom || {};
