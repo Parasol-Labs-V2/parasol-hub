@@ -167,7 +167,7 @@ function setTimestamp(iso){if(!iso)return;const s='Updated '+new Date(iso).toLoc
 const ACTIVE_STAGES=new Set(['New / Not Yet Contacted','Attempting Contact','Parasol Engaged','Meeting Booked','Meeting Held','Interest Confirmed','Diagnostic','LOI Sent']);
 async function loadMD(){
   try{
-    const res=await fetch('https://messagedesk-dashboard.vercel.app/api/dashboard');
+    const res=await fetch('/api/messagedesk/dashboard');
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();const k=data.kpis||{};const wr=k.win_rate||0;
     setMetric('md-pipeline-mrr',fmt$(k.pipeline_mrr||0));setMetric('md-active-deals',k.active_opportunities||0);setMetric('md-won-mrr',fmt$(k.won_mrr||0));setMetric('md-win-rate',wr+'%');
