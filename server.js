@@ -9,233 +9,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const CLOSE_API_KEY = process.env.CLOSE_API_KEY;
-const CLOSE_BASE = 'https://api.close.com/api/v1';
-
-const closeApi = axios.create({
-  baseURL: CLOSE_BASE,
-  auth: { username: CLOSE_API_KEY, password: '' },
-  timeout: 30000,
-});
-
-// Fetch all pages from a Close.io endpoint
-async function fetchAllPages(endpoint, params = {}) {
-  const results = [];
-  let skip = 0;
-  const limit = 100;
-  while (true) {
-    const res = await closeApi.get(endpoint, { params: { ...params, _limit: limit, _skip: skip } });
-    const data = res.data;
-    results.push(...(data.data || []));
-    if (!data.has_more) break;
-    skip += limit;
-  }
-  return results;
-}
-
-// Convert opportunity value to monthly equivalent
-function toMonthly(opp) {
-  const val = parseFloat(opp.value) || 0;
-  const freq = (opp.value_period || '').toLowerCase();
-  if (freq === 'annual') return val / 12;
-  if (freq === 'one_time' || freq === 'one-time') return 0;
-  return val; // monthly
-}
-
-// Parse A2P status number prefix
-function a2pStage(raw) {
-  if (!raw) return 0;
-  const m = raw.match(/^(\d+)\./);
-  return m ? parseInt(m[1]) : 0;
-}
-
-// GET /api/debug - inspect raw lead fields
-app.get('/api/debug', async (req, res) => {
+// MessageDesk — proxy to standalone dashboard
+app.get('/api/messagedesk/dashboard', async (req, res) => {
   try {
-    const r = await closeApi.get('/lead/', { params: { _limit: 1 } });
-    res.json(r.data.data[0] || {});
-  } catch (e) {
+    const r = await axios.get('https://messagedesk-dashboard.vercel.app/api/dashboard', { timeout: 25000 });
+    res.json(r.data);
+  } catch(e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/dashboard - main data endpoint
-app.get('/api/dashboard', async (req, res) => {
-  try {
-    // Fetch all leads with opportunities
-    const leads = await fetchAllPages('/lead/', {
-      query: 'has:opportunities',
-      _fields: 'id,display_name,opportunities,custom,contacts,date_created',
-    });
+// Duet — HubSpot
+const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
+const HS_BASE = 'https://api.hubapi.com';
+const DUET_PIPELINE_ID = '2168635108';
 
-    // Fetch all opportunities directly for richer data
-    const opps = await fetchAllPages('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
-    });
-
-    // Fetch opportunity statuses
-    const statusRes = await closeApi.get('/status/opportunity/');
-    const statuses = statusRes.data.data || [];
-
-    // Build lookup maps
-    const leadMap = {};
-    for (const lead of leads) {
-      leadMap[lead.id] = lead;
-    }
-
-    // Extract custom field IDs from first lead with custom fields
-    let a2pFieldId = null;
-    let pipelineFieldId = null;
-    for (const lead of leads) {
-      if (lead.custom) {
-        for (const [k, v] of Object.entries(lead.custom)) {
-          if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-            // likely A2P field
-            if (!a2pFieldId) a2pFieldId = k;
-          }
-        }
-      }
-    }
-
-    // Process opportunities
-    const activeOpps = [];
-    const wonOpps = [];
-    const lostOpps = [];
-    let totalPipelineValue = 0;
-    let totalWonMRR = 0;
-
-    // Status type mapping
-    const statusTypeMap = {};
-    for (const s of statuses) {
-      statusTypeMap[s.id] = s.type; // 'active', 'won', 'lost'
-    }
-
-    for (const opp of opps) {
-      const monthly = toMonthly(opp);
-      const lead = leadMap[opp.lead_id] || {};
-      const custom = lead.custom || {};
-
-      // Find A2P field
-      let a2pStatus = '';
-      let pipelineReview = '';
-      if (!a2pFieldId) {
-        for (const [k, v] of Object.entries(custom)) {
-          if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-            a2pFieldId = k;
-            a2pStatus = v;
-            break;
-          }
-        }
-      } else {
-        a2pStatus = custom[a2pFieldId] || '';
-      }
-      if (!pipelineFieldId) {
-        for (const [k, v] of Object.entries(custom)) {
-          if (k !== a2pFieldId && typeof v === 'string' && v.length > 20) {
-            pipelineFieldId = k;
-            pipelineReview = v;
-            break;
-          }
-        }
-      } else {
-        pipelineReview = custom[pipelineFieldId] || '';
-      }
-
-      // Age in days
-      const created = new Date(opp.date_created);
-      const ageDays = Math.floor((Date.now() - created.getTime()) / 86400000);
-
-      const enriched = {
-        ...opp,
-        monthly_value: monthly,
-        age_days: ageDays,
-        a2p_status: a2pStatus,
-        a2p_stage: a2pStage(a2pStatus),
-        pipeline_review: pipelineReview,
-        lead_display_name: opp.lead_name || lead.display_name || '',
-      };
-
-      const sType = statusTypeMap[opp.status_id] || opp.status_type || '';
-      if (sType === 'won') {
-        wonOpps.push(enriched);
-        totalWonMRR += monthly;
-      } else if (sType === 'lost') {
-        lostOpps.push(enriched);
-      } else {
-        activeOpps.push(enriched);
-        totalPipelineValue += monthly;
-      }
-    }
-
-    // Sort active by monthly value desc
-    activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
-
-    // KPI calculations
-    const totalLeads = leads.length;
-    const activeCount = activeOpps.length;
-    const wonCount = wonOpps.length;
-    const lostCount = lostOpps.length;
-
-    // Win rate
-    const closedTotal = wonCount + lostCount;
-    const winRate = closedTotal > 0 ? Math.round((wonCount / closedTotal) * 100) : 0;
-
-    // Average deal size (won)
-    const avgDealSize = wonCount > 0 ? Math.round(totalWonMRR / wonCount) : 0;
-
-    // A2P breakdown for active
-    const a2pBreakdown = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    for (const o of activeOpps) {
-      const stage = o.a2p_stage;
-      a2pBreakdown[stage] = (a2pBreakdown[stage] || 0) + 1;
-    }
-
-    // Pipeline by status label
-    const pipelineByStatus = {};
-    for (const o of activeOpps) {
-      const label = o.status_label || 'Unknown';
-      if (!pipelineByStatus[label]) pipelineByStatus[label] = { count: 0, value: 0 };
-      pipelineByStatus[label].count++;
-      pipelineByStatus[label].value += o.monthly_value;
-    }
-
-    // Won MRR over time (by month)
-    const mrrByMonth = {};
-    for (const o of wonOpps) {
-      const d = new Date(o.date_won || o.date_updated);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      mrrByMonth[key] = (mrrByMonth[key] || 0) + o.monthly_value;
-    }
-
-    res.json({
-      kpis: {
-        total_leads: totalLeads,
-        active_opportunities: activeCount,
-        pipeline_mrr: Math.round(totalPipelineValue),
-        won_mrr: Math.round(totalWonMRR),
-        win_rate: winRate,
-        avg_deal_size: avgDealSize,
-        won_count: wonCount,
-        lost_count: lostCount,
-        closed_total: closedTotal,
-      },
-      active_opportunities: activeOpps,
-      won_opportunities: wonOpps.slice(0, 50),
-      lost_opportunities: lostOpps.slice(0, 50),
-      pipeline_by_status: pipelineByStatus,
-      mrr_by_month: mrrByMonth,
-      a2p_breakdown: a2pBreakdown,
-      statuses,
-      field_ids: { a2p: a2pFieldId, pipeline_review: pipelineFieldId },
-    });
-  } catch (e) {
-    console.error('Dashboard error:', e.response?.data || e.message);
-    res.status(500).json({ error: e.message, detail: e.response?.data });
-  }
-});
-
-
-// ─── Duet ──────────────────────────────────────────────────────────────────────
 const DUET_STAGE_MAP = {
   '3446819577': 'New / Not Yet Contacted',
   '3446820538': 'Attempting Contact',
@@ -250,35 +38,38 @@ const DUET_STAGE_MAP = {
   '3446820545': 'Come Back To',
   '3446820546': 'Not Relevant / DQ',
 };
+
 const DUET_OWNER_MAP = {
   '163553901': 'Jonathan Goldberg',
   '163553854': 'Florencia Scopp',
-  '83189293':  'Joe',
+  '83189293': 'Joe',
   '163575365': 'Jonathan Goldberg',
+  '163553855': 'Blair',
 };
-const ownerCache = {};
 
+const cache = {};
+function getCache(key) {
+  const e = cache[key];
+  if (!e) return null;
+  if (Date.now() - e.ts > 5 * 60 * 1000) return null;
+  return e.data;
+}
+function setCache(key, data) { cache[key] = { data, ts: Date.now() }; }
+
+const ownerCache = {};
 async function resolveOwner(id) {
   if (!id) return 'Unknown';
   if (DUET_OWNER_MAP[id]) return DUET_OWNER_MAP[id];
   if (ownerCache[id]) return ownerCache[id];
   try {
-    const data = await hsFetch(`/crm/v3/owners/${id}`);
-    const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email || id;
+    const r = await axios.get(`${HS_BASE}/crm/v3/owners/${id}`, {
+      headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}` }
+    });
+    const name = [r.data.firstName, r.data.lastName].filter(Boolean).join(' ') || r.data.email || id;
     ownerCache[id] = name;
     return name;
   } catch { ownerCache[id] = id; return id; }
 }
-
-const DUET_PIPELINE_ID = '2168635108';
-const DUET_PROPS = [
-  'dealname','dealstage','pipeline','hubspot_owner_id','closedate',
-  'hs_lastmodifieddate','attribution_2024_lives','gross_savings_2024_deal',
-  'outreach_attempt_count','last_outreach_date','meeting_date','loi_sent_date',
-  'loi_signed_date','enrollment_date','enrollment_deadline','champion_name',
-  'champion_role','lost_reason','deal_source','duet_engaged_owner',
-  'secondary_owner','meeting_set','np_intro_made',
-].join(',');
 
 async function fetchDuetDeals() {
   const cached = getCache('duet');
@@ -286,17 +77,21 @@ async function fetchDuetDeals() {
 
   const deals = [];
   let after = null;
+  const PROPS = 'dealname,dealstage,pipeline,hubspot_owner_id,closedate,hs_lastmodifieddate,attribution_2024_lives,gross_savings_2024_deal,outreach_attempt_count,last_outreach_date,meeting_date,loi_sent_date,loi_signed_date,enrollment_date,enrollment_deadline,champion_name,champion_role,lost_reason,deal_source,duet_engaged_owner,secondary_owner,meeting_set,np_intro_made';
+
   while (true) {
     const body = {
       filterGroups: [{ filters: [{ propertyName: 'pipeline', operator: 'EQ', value: DUET_PIPELINE_ID }] }],
-      properties: DUET_PROPS.split(','),
+      properties: PROPS.split(','),
       limit: 100,
     };
     if (after) body.after = after;
-    const data = await hsPost('/crm/v3/objects/deals/search', body);
-    deals.push(...(data.results || []));
-    if (data.paging && data.paging.next && data.paging.next.after) {
-      after = data.paging.next.after;
+    const r = await axios.post(`${HS_BASE}/crm/v3/objects/deals/search`, body, {
+      headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' }
+    });
+    deals.push(...(r.data.results || []));
+    if (r.data.paging && r.data.paging.next && r.data.paging.next.after) {
+      after = r.data.paging.next.after;
     } else break;
   }
 
@@ -313,24 +108,18 @@ async function fetchDuetDeals() {
       stage_id: stageId,
       stage: DUET_STAGE_MAP[stageId] || stageId,
       owner: DUET_OWNER_MAP[ownerId] || ownerCache[ownerId] || ownerId,
-      owner_id: ownerId,
-      closedate: p.closedate || null,
-      last_modified: p.hs_lastmodifieddate || null,
       lives: parseFloat(p.attribution_2024_lives) || 0,
       gross_savings: parseFloat(p.gross_savings_2024_deal) || 0,
       outreach_attempts: parseInt(p.outreach_attempt_count) || 0,
       last_outreach: p.last_outreach_date || null,
       meeting_date: p.meeting_date || null,
       loi_sent_date: p.loi_sent_date || null,
-      loi_signed_date: p.loi_signed_date || null,
-      enrollment_date: p.enrollment_date || null,
-      enrollment_deadline: p.enrollment_deadline || null,
+      closedate: p.closedate || null,
+      last_modified: p.hs_lastmodifieddate || null,
       champion_name: p.champion_name || '',
       champion_role: p.champion_role || '',
       lost_reason: p.lost_reason || '',
-      deal_source: p.deal_source || '',
       meeting_set: p.meeting_set || '',
-      np_intro_made: p.np_intro_made || '',
     };
   });
 
@@ -339,23 +128,11 @@ async function fetchDuetDeals() {
   return result;
 }
 
-// ─── Routes ────────────────────────────────────────────────────────────────────
-app.get('/api/messagedesk/dashboard', async (req, res) => {
-  try {
-    if (req.query.refresh === '1') delete cache['messagedesk'];
-    res.json(await fetchMessageDeskDashboard());
-  } catch (e) {
-    console.error('MessageDesk error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
 app.get('/api/duet/deals', async (req, res) => {
   try {
     if (req.query.refresh === '1') delete cache['duet'];
     res.json(await fetchDuetDeals());
-  } catch (e) {
-    console.error('Duet error:', e.message);
+  } catch(e) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -365,3 +142,4 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Parasol Hub running on port ${PORT}`));
