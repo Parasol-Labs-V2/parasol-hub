@@ -4,60 +4,200 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parasol Hub</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', sans-serif; background: #111; }
-.hub-header {
-  background: #111111;
-  padding: 0 24px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  border-bottom: 3px solid #E8231A;
-}
-.hub-logo { font-size: 1.4rem; font-weight: 700; color: white; }
-.hub-logo span { color: #E8231A; }
-.hub-subtitle { color: #666; font-size: 0.8rem; margin-right: auto; }
-.client-btns { display: flex; gap: 8px; }
-.client-btn {
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 2px solid white;
-  background: transparent;
-  color: white;
-  transition: all 0.15s;
-}
-.client-btn.active { background: #E8231A; border-color: #E8231A; }
-.client-btn:hover:not(.active) { background: rgba(255,255,255,0.1); }
-.frame { display: none; width: 100%; height: calc(100vh - 59px); border: none; }
-.frame.active { display: block; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--red:#E8231A;--red-dim:rgba(232,35,26,0.55);--red-glow:rgba(232,35,26,0.28);--glass-bg:rgba(255,255,255,0.05);--glass-border:rgba(255,255,255,0.09);--gray:#888}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Inter',sans-serif;color:#fff;background:#000}
+#bg{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 60% at 50% 35%,#0a0a0f 0%,#000 100%)}
+#particle-canvas{position:fixed;inset:0;z-index:1;pointer-events:none}
+.scanner{position:fixed;top:0;left:-100%;width:60%;height:2px;z-index:20;background:linear-gradient(90deg,transparent 0%,var(--red-dim) 40%,var(--red) 50%,var(--red-dim) 60%,transparent 100%);animation:scan 5s linear infinite;filter:blur(0.5px)}
+@keyframes scan{0%{left:-60%;opacity:0}5%{opacity:1}90%{opacity:1}100%{left:100%;opacity:0}}
+#homepage{position:relative;z-index:2;width:100%;height:100vh;display:flex;flex-direction:column;opacity:0;animation:pgFadeIn 0.9s ease 0.1s forwards;overflow-y:auto}
+@keyframes pgFadeIn{to{opacity:1}}
+.hub-header{display:flex;align-items:center;justify-content:space-between;padding:22px 44px;flex-shrink:0}
+.header-brand{display:flex;align-items:center;gap:14px}
+.logo-circle{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;box-shadow:0 0 20px var(--red-glow),0 0 40px rgba(232,35,26,0.12);flex-shrink:0}
+.brand-text{font-size:1.9rem;font-weight:800;letter-spacing:-0.5px;line-height:1}
+.brand-text .r{color:var(--red)}.brand-text .w{color:#fff}
+.header-right{display:flex;align-items:center;gap:14px;font-size:13px;color:var(--gray)}
+.refresh-btn{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.55);padding:6px 14px;border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.2s}
+.refresh-btn:hover{background:rgba(255,255,255,0.09);color:#fff}
+.header-divider{height:1px;flex-shrink:0;background:linear-gradient(90deg,transparent 0%,var(--red-dim) 30%,var(--red-dim) 70%,transparent 100%);opacity:0.6}
+.hero{text-align:center;padding:52px 20px 44px;flex-shrink:0}
+.hero-tagline{font-size:clamp(34px,5vw,58px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;opacity:0;transform:translateY(22px);animation:slideUp 0.7s ease 0.35s forwards}
+.hero-sub{margin-top:14px;font-size:16px;color:var(--gray);opacity:0;transform:translateY(12px);animation:slideUp 0.65s ease 0.55s forwards}
+@keyframes slideUp{to{opacity:1;transform:translateY(0)}}
+.client-tiles{display:flex;gap:28px;justify-content:center;align-items:flex-start;padding:0 44px 48px;flex:1;flex-wrap:wrap}
+.client-card{background:var(--glass-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--glass-border);border-radius:20px;padding:32px;width:360px;cursor:pointer;transition:transform 0.28s ease,border-color 0.28s ease,box-shadow 0.28s ease;opacity:0;transform:translateY(32px);position:relative;overflow:hidden}
+.client-card::after{content:'';position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,rgba(232,35,26,0.05) 0%,transparent 55%);opacity:0;transition:opacity 0.28s;pointer-events:none}
+.client-card:hover::after{opacity:1}
+.client-card.c1{animation:cardIn 0.6s ease 0.65s forwards}
+.client-card.c2{animation:cardIn 0.6s ease 0.82s forwards}
+@keyframes cardIn{to{opacity:1;transform:translateY(0)}}
+.client-card:hover{transform:translateY(-8px);border-color:rgba(232,35,26,0.55);box-shadow:0 12px 48px rgba(232,35,26,0.18),0 0 0 1px rgba(232,35,26,0.15)}
+.card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.card-name{font-size:22px;font-weight:700}
+.crm-badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:5px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:var(--gray);letter-spacing:0.3px}
+.health-signal{display:flex;align-items:center;gap:10px;margin-bottom:22px;padding:10px 14px;background:rgba(0,0,0,0.35);border-radius:10px;border:1px solid rgba(255,255,255,0.05)}
+.health-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.health-dot.green{background:#22c55e;box-shadow:0 0 10px rgba(34,197,94,0.7);animation:blink 2s ease-in-out infinite}
+.health-dot.yellow{background:#f59e0b;box-shadow:0 0 10px rgba(245,158,11,0.7);animation:blink 2.5s ease-in-out infinite}
+.health-dot.red-h{background:var(--red);box-shadow:0 0 10px var(--red-glow);animation:blink 1.5s ease-in-out infinite}
+.health-dot.idle{background:#444}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.6;transform:scale(0.8)}}
+.health-text{font-size:13px;color:rgba(255,255,255,0.55);font-weight:500}
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:26px}
+.metric{background:rgba(0,0,0,0.28);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:13px 15px}
+.metric-label{font-size:10px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:7px}
+.metric-value{font-size:20px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;transition:color 0.3s}
+.metric-value.dim{color:#444;font-size:16px;font-weight:400}
+.view-btn{width:100%;padding:13px;background:var(--red);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.2s,box-shadow 0.2s,transform 0.15s;font-family:'Inter',sans-serif;letter-spacing:0.2px}
+.view-btn:hover{background:#c51d15;box-shadow:0 4px 24px rgba(232,35,26,0.45);transform:translateY(-1px)}
+#client-view{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:#060608;opacity:0;pointer-events:none;transition:opacity 0.38s ease}
+#client-view.open{opacity:1;pointer-events:all}
+.client-nav{height:48px;flex-shrink:0;background:rgba(0,0,0,0.85);border-bottom:1px solid rgba(232,35,26,0.25);display:flex;align-items:center;padding:0 20px;gap:18px;backdrop-filter:blur(12px)}
+.back-btn{background:none;border:1px solid rgba(255,255,255,0.13);color:rgba(255,255,255,0.65);padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.18s;font-family:'Inter',sans-serif;white-space:nowrap}
+.back-btn:hover{color:#fff;border-color:rgba(255,255,255,0.28);background:rgba(255,255,255,0.06)}
+.client-nav-label{font-size:14px;font-weight:600}
+.client-nav-time{margin-left:auto;font-size:12px;color:var(--gray)}
+.client-iframe{flex:1;border:none;width:100%}
+@media(max-width:800px){.hub-header{padding:16px 20px}.client-tiles{padding:0 20px 40px;gap:20px}.client-card{width:100%;max-width:460px}.hero{padding:36px 20px 32px}}
 </style>
 </head>
 <body>
-<header class="hub-header">
-  <div class="hub-logo"><span>Parasol</span> Hub</div>
-  <div class="hub-subtitle">Client Dashboard Portal</div>
-  <div class="client-btns">
-    <button class="client-btn active" onclick="switchClient('messagedesk', this)">MessageDesk</button>
-    <button class="client-btn" onclick="switchClient('duet', this)">Duet</button>
+<div id="bg"></div>
+<canvas id="particle-canvas"></canvas>
+<div class="scanner"></div>
+<div id="homepage">
+  <header class="hub-header">
+    <div class="header-brand">
+      <div class="logo-circle">P</div>
+      <div class="brand-text"><span class="r">Parasol</span><span class="w"> Hub</span></div>
+    </div>
+    <div class="header-right">
+      <span id="last-updated"></span>
+      <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
+    </div>
+  </header>
+  <div class="header-divider"></div>
+  <div class="hero">
+    <div class="hero-tagline">Your Clients. One View.</div>
+    <div class="hero-sub">Select a client to view their dashboard</div>
   </div>
-</header>
-
-<iframe id="frame-messagedesk" class="frame active" src="https://messagedesk-dashboard.vercel.app/"></iframe>
-<iframe id="frame-duet" class="frame" src="https://duet-dashboard.vercel.app/"></iframe>
-
+  <div class="client-tiles">
+    <div class="client-card c1" onclick="openClient('messagedesk')">
+      <div class="card-top">
+        <div class="card-name">MessageDesk</div>
+        <div class="crm-badge">Close.io</div>
+      </div>
+      <div class="health-signal">
+        <div class="health-dot idle" id="md-dot"></div>
+        <div class="health-text" id="md-health-text">Loading…</div>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric"><div class="metric-label">Pipeline MRR</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
+        <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
+        <div class="metric"><div class="metric-label">Won MRR</div><div class="metric-value dim" id="md-won-mrr">—</div></div>
+        <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
+      </div>
+      <button class="view-btn">View Dashboard →</button>
+    </div>
+    <div class="client-card c2" onclick="openClient('duet')">
+      <div class="card-top">
+        <div class="card-name">Duet</div>
+        <div class="crm-badge">HubSpot</div>
+      </div>
+      <div class="health-signal">
+        <div class="health-dot idle" id="duet-dot"></div>
+        <div class="health-text" id="duet-health-text">Loading…</div>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric"><div class="metric-label">Active Lives</div><div class="metric-value dim" id="duet-active-lives">—</div></div>
+        <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="duet-active-deals">—</div></div>
+        <div class="metric"><div class="metric-label">Outreach Gap</div><div class="metric-value dim" id="duet-outreach-gap">—</div></div>
+        <div class="metric"><div class="metric-label">Gross Savings</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
+      </div>
+      <button class="view-btn">View Dashboard →</button>
+    </div>
+  </div>
+</div>
+<div id="client-view">
+  <nav class="client-nav">
+    <button class="back-btn" onclick="closeClient()">← Parasol Hub</button>
+    <div class="client-nav-label" id="client-nav-label"></div>
+    <div class="client-nav-time" id="client-nav-time"></div>
+  </nav>
+  <iframe class="client-iframe" id="client-iframe" src="" title="Client Dashboard"></iframe>
+</div>
 <script>
-function switchClient(client, btn) {
-  document.querySelectorAll('.client-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.frame').forEach(f => f.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('frame-' + client).classList.add('active');
+(function(){
+  const canvas=document.getElementById('particle-canvas');
+  const ctx=canvas.getContext('2d');
+  const N=80,LINK=145,ps=[];
+  function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight}
+  window.addEventListener('resize',resize);resize();
+  for(let i=0;i<N;i++){
+    const red=Math.random()<0.28;
+    ps.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,vx:(Math.random()-0.5)*0.28,vy:(Math.random()-0.5)*0.28,r:Math.random()*1.4+1.2,col:red?'rgba(232,35,26,0.6)':'rgba(255,255,255,0.18)',lc:red?'rgba(232,35,26,':'rgba(200,200,200,'});
+  }
+  function tick(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(let i=0;i<N;i++){
+      const p=ps[i];
+      p.x+=p.vx;p.y+=p.vy;
+      if(p.x<0)p.x=canvas.width;else if(p.x>canvas.width)p.x=0;
+      if(p.y<0)p.y=canvas.height;else if(p.y>canvas.height)p.y=0;
+      for(let j=i+1;j<N;j++){
+        const q=ps[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<LINK){ctx.strokeStyle=p.lc+(1-d/LINK)*0.22+')';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke()}
+      }
+      ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+function fmt$(n){if(!n&&n!==0)return '$0';if(n>=1e6)return '$'+(n/1e6).toFixed(1)+'M';if(n>=1e3)return '$'+(n/1e3).toFixed(1)+'K';return '$'+Math.round(n).toLocaleString()}
+function fmtNum(n){if(!n&&n!==0)return '0';if(n>=1e6)return (n/1e6).toFixed(1)+'M';if(n>=1e3)return (n/1e3).toFixed(1)+'K';return Math.round(n).toLocaleString()}
+function setMetric(id,val){const el=document.getElementById(id);if(!el)return;el.textContent=val;el.classList.remove('dim')}
+function setHealth(prefix,cls,text){const dot=document.getElementById(prefix+'-dot');const txt=document.getElementById(prefix+'-health-text');if(dot)dot.className='health-dot '+cls;if(txt)txt.textContent=text}
+function setTimestamp(iso){if(!iso)return;const s='Updated '+new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});document.getElementById('last-updated').textContent=s;document.getElementById('client-nav-time').textContent=s}
+const ACTIVE_STAGES=new Set(['New / Not Yet Contacted','Attempting Contact','Parasol Engaged','Meeting Booked','Meeting Held','Interest Confirmed','Diagnostic','LOI Sent']);
+async function loadMD(){
+  try{
+    const res=await fetch('/api/messagedesk/dashboard');
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const data=await res.json();const k=data.kpis||{};const wr=k.win_rate||0;
+    setMetric('md-pipeline-mrr',fmt$(k.pipeline_mrr||0));setMetric('md-active-deals',k.active_deals||0);setMetric('md-won-mrr',fmt$(k.won_mrr||0));setMetric('md-win-rate',wr+'%');
+    const cls=wr>30?'green':wr>=15?'yellow':'red-h';const lbl=wr>30?'Pipeline healthy':wr>=15?'Moderate pipeline':'Pipeline at risk';
+    setHealth('md',cls,lbl);setTimestamp(data.updated_at);
+  }catch(e){setHealth('md','red-h','Failed to load');['md-pipeline-mrr','md-active-deals','md-won-mrr','md-win-rate'].forEach(id=>setMetric(id,'Error'))}
 }
+async function loadDuet(){
+  try{
+    const res=await fetch('/api/duet/deals');
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const data=await res.json();const deals=data.deals||[];
+    const active=deals.filter(d=>ACTIVE_STAGES.has(d.stage));
+    const lives=active.reduce((s,d)=>s+(d.lives||0),0);
+    const gap=deals.filter(d=>d.outreach_attempts===0&&d.stage!=='Enrolled / Won').length;
+    const savings=active.reduce((s,d)=>s+(d.gross_savings||0),0);
+    setMetric('duet-active-lives',fmtNum(lives));setMetric('duet-active-deals',active.length);setMetric('duet-outreach-gap',gap);setMetric('duet-gross-savings',fmt$(savings));
+    const cls=lives>20000?'green':lives>=10000?'yellow':'red-h';const lbl=lives>20000?'Strong pipeline':lives>=10000?'Moderate pipeline':'Needs attention';
+    setHealth('duet',cls,lbl);setTimestamp(data.updated_at);
+  }catch(e){setHealth('duet','red-h','Failed to load');['duet-active-lives','duet-active-deals','duet-outreach-gap','duet-gross-savings'].forEach(id=>setMetric(id,'Error'))}
+}
+const IFRAME_URLS={messagedesk:'https://messagedesk-dashboard.vercel.app/',duet:'https://duet-dashboard.vercel.app/'};
+const CLIENT_NAMES={messagedesk:'MessageDesk',duet:'Duet'};
+function openClient(client){document.getElementById('client-nav-label').textContent=CLIENT_NAMES[client];document.getElementById('client-iframe').src=IFRAME_URLS[client];document.getElementById('client-view').classList.add('open')}
+function closeClient(){const view=document.getElementById('client-view');view.classList.remove('open');setTimeout(()=>{document.getElementById('client-iframe').src=''},420)}
+document.getElementById('refresh-btn').addEventListener('click',()=>{
+  ['md-pipeline-mrr','md-active-deals','md-won-mrr','md-win-rate','duet-active-lives','duet-active-deals','duet-outreach-gap','duet-gross-savings'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent='—';el.classList.add('dim')}});
+  setHealth('md','idle','Loading…');setHealth('duet','idle','Loading…');loadMD();loadDuet();
+});
+loadMD();loadDuet();
 </script>
 </body>
 </html>
