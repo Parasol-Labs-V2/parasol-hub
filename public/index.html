@@ -170,7 +170,7 @@ async function loadMD(){
     const res=await fetch('https://messagedesk-dashboard.vercel.app/api/dashboard');
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();const k=data.kpis||{};const wr=k.win_rate||0;
-    setMetric('md-pipeline-mrr',fmt$(k.pipeline_mrr||0));setMetric('md-active-deals',k.active_deals||0);setMetric('md-won-mrr',fmt$(k.won_mrr||0));setMetric('md-win-rate',wr+'%');
+    setMetric('md-pipeline-mrr',fmt$(k.pipeline_mrr||0));setMetric('md-active-deals',k.active_opportunities||0);setMetric('md-won-mrr',fmt$(k.won_mrr||0));setMetric('md-win-rate',wr+'%');
     const cls=wr>30?'green':wr>=15?'yellow':'red-h';const lbl=wr>30?'Pipeline healthy':wr>=15?'Moderate pipeline':'Pipeline at risk';
     setHealth('md',cls,lbl);setTimestamp(data.updated_at);
   }catch(e){setHealth('md','red-h','Failed to load');['md-pipeline-mrr','md-active-deals','md-won-mrr','md-win-rate'].forEach(id=>setMetric(id,'Error'))}
