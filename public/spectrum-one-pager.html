@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectrum Internet - Use Case by Job Function</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #1a1a1a;
+            background: #fff;
+        }
+        .page {
+            width: 8.5in;
+            min-height: 11in;
+            padding: 0.5in;
+            margin: 0 auto;
+            background: #fff;
+        }
+        @media print {
+            .page { padding: 0.4in; }
+            .page-break { page-break-before: always; }
+        }
+        h1 {
+            font-size: 22px;
+            color: #0077c8;
+            margin-bottom: 4px;
+            border-bottom: 3px solid #0077c8;
+            padding-bottom: 6px;
+        }
+        h2 {
+            font-size: 14px;
+            color: #0077c8;
+            margin: 14px 0 8px 0;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #ddd;
+        }
+        h3 {
+            font-size: 12px;
+            color: #333;
+            margin: 10px 0 5px 0;
+        }
+        .subtitle {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+        }
+        .card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 10px;
+            border-left: 3px solid #0077c8;
+        }
+        .card h3 {
+            margin: 0 0 6px 0;
+            font-size: 11px;
+            color: #0077c8;
+        }
+        .card-scale {
+            font-size: 9px;
+            color: #666;
+            font-style: italic;
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px dashed #ddd;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin: 6px 0;
+        }
+        th {
+            background: #0077c8;
+            color: #fff;
+            padding: 5px 6px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .mini-table th { font-size: 9px; padding: 3px 4px; }
+        .mini-table td { font-size: 9px; padding: 3px 4px; }
+        .highlight-box {
+            background: linear-gradient(135deg, #0077c8 0%, #005a9e 100%);
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .highlight-box h3 { color: #fff; margin: 0 0 6px 0; }
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        .stat-box {
+            flex: 1;
+            background: #f0f7fc;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-box .number {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0077c8;
+        }
+        .stat-box .label {
+            font-size: 9px;
+            color: #666;
+        }
+        .priority-stars { color: #f5a623; }
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(to right, #0077c8, transparent);
+            margin: 16px 0;
+        }
+        .logo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .spectrum-logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0077c8;
+            letter-spacing: -1px;
+        }
+        .parasol-badge {
+            font-size: 9px;
+            color: #666;
+            padding: 3px 8px;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+        }
+        ul { padding-left: 14px; margin: 4px 0; }
+        li { margin: 2px 0; }
+        .two-col-list {
+            columns: 2;
+            column-gap: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="page">
+    <div class="logo-header">
+        <span class="spectrum-logo">SPECTRUM</span>
+        <span class="parasol-badge">Parasol Lookalike Campaign</span>
+    </div>
+
+    <h1>Use Case by Job Function</h1>
+    <p class="subtitle">Lookalike Campaign Strategy for Internet Service Provider Workforce</p>
+
+    <div class="grid">
+        <div class="card">
+            <h3>1. Field Technicians</h3>
+            <p><strong>Role:</strong> Install, maintain & expand fiber broadband network</p>
+            <table class="mini-table">
+                <tr><th>Pain Point</th><th>Parasol Solution</th></tr>
+                <tr><td>High turnover in physical roles</td><td>Target experienced techs seeking stability</td></tr>
+                <tr><td>Hiring across 41 states</td><td>Geo-targeted lookalikes by market</td></tr>
+                <tr><td>CDL/tech certifications needed</td><td>Filter for qualified credentials</td></tr>
+                <tr><td>Safety culture fit</td><td>Behavioral targeting for reliability</td></tr>
+            </table>
+            <div class="card-scale"><strong>Scale:</strong> Primary hiring focus - continuous open reqs nationwide</div>
+        </div>
+
+        <div class="card">
+            <h3>2. Customer Service Representatives</h3>
+            <p><strong>Role:</strong> Call center experts guiding customers to solutions</p>
+            <table class="mini-table">
+                <tr><th>Pain Point</th><th>Parasol Solution</th></tr>
+                <tr><td>High-volume seasonal hiring</td><td>Surge campaigns for promos</td></tr>
+                <tr><td>Bilingual requirements</td><td>Language-targeted lookalikes</td></tr>
+                <tr><td>Remote flexibility needs</td><td>Target remote-ready candidates</td></tr>
+                <tr><td>Call center retention</td><td>Lookalikes based on tenure signals</td></tr>
+            </table>
+            <div class="card-scale"><strong>Scale:</strong> 100% U.S.-based workforce requirement</div>
+        </div>
+
+        <div class="card">
+            <h3>3. Sales (Residential & SMB)</h3>
+            <p><strong>Role:</strong> Inside, outside & retail sales</p>
+            <table class="mini-table">
+                <tr><th>Pain Point</th><th>Parasol Solution</th></tr>
+                <tr><td>Commission-driven self-starters</td><td>Target goal-oriented profiles</td></tr>
+                <tr><td>Door-to-door positions</td><td>Geo-fence competitor retail</td></tr>
+                <tr><td>Retail store staffing</td><td>Mall/shopping proximity targeting</td></tr>
+                <tr><td>Upsell skills needed</td><td>Lookalikes from telecom sales</td></tr>
+            </table>
+            <div class="card-scale"><strong>Scale:</strong> Multi-channel - retail, field, telesales</div>
+        </div>
+
+        <div class="card">
+            <h3>4. Enterprise Sales & Network Ops</h3>
+            <p><strong>Role:</strong> B2B solutions + backend infrastructure</p>
+            <table class="mini-table">
+                <tr><th>Pain Point</th><th>Parasol Solution</th></tr>
+                <tr><td>Complex B2B sales cycle</td><td>Target telecom/IT sales background</td></tr>
+                <tr><td>Territory management</td><td>Regional account-based signals</td></tr>
+                <tr><td>Competitive for engineers</td><td>Target passive competitor NOC staff</td></tr>
+                <tr><td>Specialized certs (CCNA)</td><td>Credential-based lookalikes</td></tr>
+            </table>
+            <div class="card-scale"><strong>Scale:</strong> Strategic hires in major metros</div>
+        </div>
+    </div>
+
+    <h2>Campaign Priority Matrix</h2>
+    <table>
+        <tr>
+            <th>Job Category</th>
+            <th>Volume</th>
+            <th>Priority</th>
+            <th>Lookalike Source</th>
+        </tr>
+        <tr>
+            <td><strong>Field Technicians</strong></td>
+            <td>High</td>
+            <td class="priority-stars">★★★★★</td>
+            <td>Trade schools, competitor techs, CDL holders</td>
+        </tr>
+        <tr>
+            <td><strong>Customer Service</strong></td>
+            <td>High</td>
+            <td class="priority-stars">★★★★☆</td>
+            <td>Call center workers, retail service reps</td>
+        </tr>
+        <tr>
+            <td><strong>Residential Sales</strong></td>
+            <td>Medium-High</td>
+            <td class="priority-stars">★★★★☆</td>
+            <td>Wireless retail, door-to-door sales</td>
+        </tr>
+        <tr>
+            <td><strong>Enterprise Sales</strong></td>
+            <td>Low-Medium</td>
+            <td class="priority-stars">★★★☆☆</td>
+            <td>B2B tech sales, telecom account managers</td>
+        </tr>
+        <tr>
+            <td><strong>Network Ops</strong></td>
+            <td>Low</td>
+            <td class="priority-stars">★★★☆☆</td>
+            <td>ISP/telecom NOC engineers</td>
+        </tr>
+    </table>
+
+    <div class="section-divider"></div>
+
+    <h1>Company Overview: Charter Communications</h1>
+
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="number">$54.8B</div>
+            <div class="label">2025 Revenue</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">100K+</div>
+            <div class="label">Employees</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">59M</div>
+            <div class="label">Homes & Businesses</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">41</div>
+            <div class="label">States Served</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">#2</div>
+            <div class="label">U.S. Cable Operator</div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <h3>Corporate Profile</h3>
+            <ul>
+                <li><strong>Parent:</strong> Charter Communications (NASDAQ: CHTR)</li>
+                <li><strong>HQ:</strong> Stamford, Connecticut</li>
+                <li><strong>Brand:</strong> Spectrum (internet, TV, mobile, voice)</li>
+                <li><strong>Workforce:</strong> 100% U.S.-based</li>
+            </ul>
+
+            <h3>Ownership Structure</h3>
+            <ul>
+                <li><strong>Liberty Broadband:</strong> 45.72% (largest shareholder)</li>
+                <li><strong>Institutional Investors:</strong> ~50%+ (Vanguard, BlackRock, etc.)</li>
+                <li><strong>2026 Merger:</strong> Cox Communications (FCC approved Feb 2026) - Cox will hold 23% of combined entity</li>
+            </ul>
+        </div>
+        <div>
+            <h3>5-Year Financial Performance</h3>
+            <table class="mini-table">
+                <tr><th>Year</th><th>Revenue</th><th>YoY Growth</th></tr>
+                <tr><td>2021</td><td>$51.7B</td><td>+7.5%</td></tr>
+                <tr><td>2022</td><td>$54.0B</td><td>+4.4%</td></tr>
+                <tr><td>2023</td><td>$54.6B</td><td>+1.1%</td></tr>
+                <tr><td>2024</td><td>$55.1B</td><td>+0.9%</td></tr>
+                <tr><td>2025</td><td>$54.8B</td><td>-0.6%</td></tr>
+            </table>
+            <p style="margin-top: 6px; font-size: 10px;">
+                <strong>2025 Metrics:</strong> EBITDA $22.7B | FCF $5.0B | 2026 CapEx $11.4B
+            </p>
+        </div>
+    </div>
+
+    <div class="highlight-box">
+        <h3>Strategic Position</h3>
+        <div class="grid">
+            <div>
+                <strong>Strengths:</strong>
+                <ul>
+                    <li>2nd largest U.S. cable operator</li>
+                    <li>Expanding fiber footprint (complete 2027)</li>
+                    <li>Growing Spectrum Mobile subscribers</li>
+                    <li>Strong free cash flow generation</li>
+                </ul>
+            </div>
+            <div>
+                <strong>Challenges:</strong>
+                <ul>
+                    <li>Video revenue decline (cord-cutting)</li>
+                    <li>Broadband competition (fiber, 5G FWA)</li>
+                    <li>Cox merger integration ahead</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <p style="text-align: center; font-size: 9px; color: #999; margin-top: 12px;">
+        Prepared for Parasol lookalike campaign development | May 2026
+    </p>
+</div>
+
+</body>
+</html>
