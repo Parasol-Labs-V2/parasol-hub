@@ -108,6 +108,7 @@ async function fetchDuetDeals() {
       stage_id: stageId,
       stage: DUET_STAGE_MAP[stageId] || stageId,
       owner: DUET_OWNER_MAP[ownerId] || ownerCache[ownerId] || ownerId,
+      ownerId: ownerId,
       lives: parseFloat(p.attribution_2024_lives) || 0,
       gross_savings: parseFloat(p.gross_savings_2024_deal) || 0,
       outreach_attempts: parseInt(p.outreach_attempt_count) || 0,
