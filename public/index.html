@@ -167,7 +167,7 @@ async function loadDuet(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     const allDeals=data.deals||[];
-    const deals=allDeals.filter(d=>PARASOL_OWNERS.has(String(d.ownerId||d.owner_id||'')));
+    const deals=allDeals.filter(d=>PARASOL_OWNERS.has(String(d.ownerId||'')));
     const qualified=deals.filter(d=>QUALIFIED_STAGES.has(d.stage));
     const qualLives=qualified.reduce((s,d)=>s+(d.lives||0),0);
     const qualSavings=qualified.reduce((s,d)=>s+Math.max(0,d.grossSavings||d.gross_savings||0),0);
