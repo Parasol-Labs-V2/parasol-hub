@@ -186,8 +186,8 @@ async function loadDuet(){
     setMetric('duet-gross-savings',fmt$(qualSavings));
     setMetric('duet-last-week','Mtgs '+lastWkMtgs+' · Deals Fwd '+lastWkFwd);
     setMetric('duet-wtd','Mtgs '+wtdMtgs+' · Deals Fwd '+wtdFwd);
-    const cls=qualLives>3000?'green':qualLives>=1000?'yellow':'red-h';
-    setHealth('duet',cls,qualLives>3000?'Strong pipeline':qualLives>=1000?'Moderate pipeline':'Needs attention');
+    const cls=qualLives>500?'green':qualLives>=200?'yellow':'red-h';
+    setHealth('duet',cls,qualLives>500?'Strong pipeline':qualLives>=200?'Moderate pipeline':'Needs attention');
     setTimestamp(data.updatedAt||data.updated_at);
   }catch(e){setHealth('duet','red-h','Failed to load');['duet-qual-lives','duet-qual-deals','duet-gross-savings','duet-last-week','duet-wtd'].forEach(id=>setMetric(id,'Error'))}
 }
