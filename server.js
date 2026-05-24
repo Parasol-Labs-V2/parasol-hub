@@ -122,7 +122,9 @@ async function fetchDuetDeals() {
   const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
   await Promise.all(ownerIds.map(id => resolveOwner(id)));
 
-  const stageHistoryMap = await fetchStageHistory(deals.map(d => d.id));
+  const QUAL_IDS = new Set(["3467751100","3446820540","3467565765","3477604030","3446820542","3446820543"]);
+  const qualDeals = deals.filter(d => QUAL_IDS.has(d.properties?.dealstage));
+  const stageHistoryMap = await fetchStageHistory(qualDeals.map(d => d.id));
 
   const mapped = deals.map(d => {
     const p = d.properties || {};
