@@ -9,20 +9,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// MessageDesk — proxy to standalone dashboard
 app.get('/api/messagedesk/dashboard', async (req, res) => {
   try {
     const r = await axios.get('https://messagedesk-dashboard.vercel.app/api/dashboard', { timeout: 25000 });
     res.json(r.data);
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Duet — HubSpot
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const HS_BASE = 'https://api.hubapi.com';
 const DUET_PIPELINE_ID = '2168635108';
+const MEETING_BOOKED_STAGE_ID = '3467751100';
 
 const DUET_STAGE_MAP = {
   '3446819577': 'New / Not Yet Contacted',
@@ -39,11 +36,13 @@ const DUET_STAGE_MAP = {
   '3446820546': 'Not Relevant / DQ',
 };
 
+const QUALIFIED_STAGE_IDS = new Set(['3467751100','3446820540','3467565765','3477604030','3446820542','3446820543']);
+
 const DUET_OWNER_MAP = {
   '163553901': 'Jonathan Goldberg',
   '163553854': 'Florencia Scopp',
   '83189293': 'Joe',
-  '163575365': 'Jonathan Goldberg',
+  '163575365': 'Alicia Ortiz',
   '163553855': 'Blair',
 };
 
@@ -71,6 +70,31 @@ async function resolveOwner(id) {
   } catch { ownerCache[id] = id; return id; }
 }
 
+async function fetchStageHistory(dealIds) {
+  const stageEnteredMap = {};
+  const chunks = [];
+  for (let i = 0; i < dealIds.length; i += 100) chunks.push(dealIds.slice(i, i + 100));
+  for (const chunk of chunks) {
+    try {
+      const body = { inputs: chunk.map(id => ({ id })), propertiesWithHistory: ['dealstage'] };
+      const r = await axios.post(`${HS_BASE}/crm/v3/objects/deals/batch/read`, body, {
+        headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' }
+      });
+      for (const result of (r.data.results || [])) {
+        const history = result.propertiesWithHistory?.dealstage || [];
+        let meetingBookedAt = null;
+        let qualifiedAt = null;
+        for (const h of history) {
+          if (h.value === MEETING_BOOKED_STAGE_ID && !meetingBookedAt) meetingBookedAt = h.timestamp;
+          if (QUALIFIED_STAGE_IDS.has(h.value) && !qualifiedAt) qualifiedAt = h.timestamp;
+        }
+        stageEnteredMap[result.id] = { meetingBookedAt, qualifiedAt };
+      }
+    } catch(e) { console.error('Stage history fetch error:', e.message); }
+  }
+  return stageEnteredMap;
+}
+
 async function fetchDuetDeals() {
   const cached = getCache('duet');
   if (cached) return cached;
@@ -90,18 +114,20 @@ async function fetchDuetDeals() {
       headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' }
     });
     deals.push(...(r.data.results || []));
-    if (r.data.paging && r.data.paging.next && r.data.paging.next.after) {
-      after = r.data.paging.next.after;
-    } else break;
+    if (r.data.paging?.next?.after) after = r.data.paging.next.after;
+    else break;
   }
 
   const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
   await Promise.all(ownerIds.map(id => resolveOwner(id)));
 
+  const stageHistoryMap = await fetchStageHistory(deals.map(d => d.id));
+
   const mapped = deals.map(d => {
     const p = d.properties || {};
     const stageId = p.dealstage || '';
     const ownerId = p.hubspot_owner_id || '';
+    const history = stageHistoryMap[d.id] || {};
     return {
       id: d.id,
       dealname: p.dealname || '',
@@ -121,6 +147,8 @@ async function fetchDuetDeals() {
       champion_role: p.champion_role || '',
       lost_reason: p.lost_reason || '',
       meeting_set: p.meeting_set || '',
+      meetingBookedAt: history.meetingBookedAt || null,
+      qualifiedAt: history.qualifiedAt || null,
     };
   });
 
@@ -133,9 +161,7 @@ app.get('/api/duet/deals', async (req, res) => {
   try {
     if (req.query.refresh === '1') delete cache['duet'];
     res.json(await fetchDuetDeals());
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('*', (req, res) => {

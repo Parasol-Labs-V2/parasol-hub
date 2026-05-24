@@ -177,9 +177,9 @@ async function loadDuet(){
     const lastMon=new Date(thisMon);lastMon.setDate(thisMon.getDate()-7);
     const lastSun=new Date(thisMon);lastSun.setMilliseconds(-1);
     const inWindow=(d,from,to)=>{const m=new Date(d.last_modified||d.lastModified||'');return m>=from&&m<=to;};
-    const lastWkMtgs=deals.filter(d=>inWindow(d,lastMon,lastSun)&&d.stage==='Meeting Booked').length;
+    const lastWkMtgs=deals.filter(d=>inWindow(d,lastMon,lastSun,"meetingBookedAt")).length;
     const lastWkFwd=deals.filter(d=>inWindow(d,lastMon,lastSun)&&QUALIFIED_STAGES.has(d.stage||d.stage_id)).length;
-    const wtdMtgs=deals.filter(d=>inWindow(d,thisMon,now)&&d.stage==='Meeting Booked').length;
+    const wtdMtgs=deals.filter(d=>inWindow(d,thisMon,now,"meetingBookedAt")).length;
     const wtdFwd=deals.filter(d=>inWindow(d,thisMon,now)&&QUALIFIED_STAGES.has(d.stage||d.stage_id)).length;
     setMetric('duet-qual-lives',fmtNum(qualLives));
     setMetric('duet-qual-deals',qualified.length);
