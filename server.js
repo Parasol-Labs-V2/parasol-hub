@@ -173,3 +173,11 @@ app.get('*', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Parasol Hub running on port ${PORT}`));
+
+// Proxy team performance from Duet dashboard
+app.get('/api/duet/team-performance', async (req, res) => {
+  try {
+    const r = await axios.get('https://duet-dashboard.vercel.app/api/team-performance', { timeout: 25000 });
+    res.json(r.data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
