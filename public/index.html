@@ -65,6 +65,10 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
 .client-nav-badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--red);color:white;font-weight:600}
 .client-nav-time{margin-left:auto;font-size:12px;color:rgba(255,255,255,0.4)}
 .client-iframe{flex:1;border:none;width:100%}
+.eng-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;letter-spacing:0.3px}
+.sparkline-wrap{margin:12px 0 8px;padding:10px 14px;background:var(--cream);border:1px solid #e8e0d8;border-radius:8px}
+.sparkline-header{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.sparkline-area{min-height:44px}
 @media(max-width:800px){
   .hub-header{padding:0 20px}
   .client-tiles{padding:24px 20px 40px;gap:16px}
@@ -94,24 +98,30 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
     <div class="client-card c1" onclick="openClient('messagedesk')">
       <div class="card-top">
         <div class="card-name">MessageDesk</div>
-        <div class="crm-badge">Close.io</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="crm-badge">Close.io</div>
+          <div class="eng-badge" id="md-eng-badge">—</div>
+        </div>
       </div>
       <div class="health-signal">
         <div class="health-dot idle" id="md-dot"></div>
         <div class="health-text" id="md-health-text">Loading…</div>
       </div>
       <div class="metrics-grid">
-        <div class="metric"><div class="metric-label">Pipeline MRR</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
+        <div class="metric"><div class="metric-label">Won ARR</div><div class="metric-value dim" id="md-won-arr">—</div></div>
+        <div class="metric"><div class="metric-label">Onboarding MRR</div><div class="metric-value dim" id="md-onboarding-mrr">—</div></div>
+        <div class="metric"><div class="metric-label">Weighted Pipeline</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
         <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
-        <div class="metric"><div class="metric-label">Won MRR</div><div class="metric-value dim" id="md-won-mrr">—</div></div>
-        <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
       </div>
       <button class="view-btn">View Dashboard →</button>
     </div>
     <div class="client-card c2" onclick="openClient('duet')">
       <div class="card-top">
         <div class="card-name">Duet</div>
-        <div class="crm-badge">HubSpot</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="crm-badge">HubSpot</div>
+          <div class="eng-badge" id="duet-eng-badge">—</div>
+        </div>
       </div>
       <div class="health-signal">
         <div class="health-dot idle" id="duet-dot"></div>
@@ -124,7 +134,11 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
         <div class="metric full"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
         <div class="metric full"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
       </div>
-      <div class="card-note">Parasol-managed deals only (Mtg Booked+)</div>
+      <div class="sparkline-wrap">
+        <div class="sparkline-header">Meetings Booked · by Week <span id="duet-wow-delta"></span></div>
+        <div id="duet-sparkline" class="sparkline-area">—</div>
+      </div>
+      <div class="card-note">Parasol-managed deals only · yellow bar = current week (partial)</div>
       <button class="view-btn">View Dashboard →</button>
     </div>
   </div>
@@ -158,12 +172,13 @@ async function loadMD(){
     const res=await fetch('/api/messagedesk/dashboard');
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();const k=data.kpis||{};
-    setMetric('md-pipeline-mrr',fmt$(k.active_mrr||0));
+    setMetric('md-won-arr',fmt$((k.won_mrr||0)*12));
+    setMetric('md-onboarding-mrr',fmt$(k.onboarding_mrr||0));
+    setMetric('md-weighted-pipeline',fmt$(k.weighted_mrr||0));
     setMetric('md-active-deals',k.active_count||0);
-    setMetric('md-won-mrr',fmt$(k.won_mrr||0));
-    setMetric('md-win-rate',(k.win_rate||0)+'%');
-    const wr=k.win_rate||0;
-    setHealth('md',wr>30?'green':wr>=15?'yellow':'red-h',wr>30?'Pipeline healthy':wr>=15?'Moderate pipeline':'Pipeline at risk');
+    document.getElementById('md-eng-badge').textContent=engLeftLabel(CLIENT_CONFIG.messagedesk.engEnd);
+    const wonArr=(k.won_mrr||0)*12;
+    setHealth('md',wonArr>10000?'green':wonArr>=3000?'yellow':'red-h',wonArr>10000?'Revenue growing':wonArr>=3000?'Moderate revenue':'Early pipeline');
     setTimestamp(data.updated_at||new Date().toISOString());
   }catch(e){setHealth('md','red-h','Failed to load');['md-pipeline-mrr','md-active-deals','md-won-mrr','md-win-rate'].forEach(id=>setMetric(id,'Error'))}
 }
@@ -199,11 +214,69 @@ async function loadDuet(){
     setMetric('duet-gross-savings',fmt$(qualSavings));
     setMetric('duet-last-week','Calls '+lwCalls+' · Mtgs '+lastWkMtgs+' · Fwd '+lastWkFwd);
     setMetric('duet-wtd','Calls '+wtdCalls+' · Mtgs '+wtdMtgs+' · Fwd '+wtdFwd);
+    // Sparkline — bucket meetingBookedAt by week across Parasol-managed deals
+    const wkBuckets=buildWeekBuckets(deals,10);
+    const sparkEl=document.getElementById('duet-sparkline');
+    if(sparkEl)sparkEl.innerHTML=renderSparkline(wkBuckets);
+    const lwMtgCount=wkBuckets[wkBuckets.length-2]?.count||0;
+    const wtdMtgCount=wkBuckets[wkBuckets.length-1]?.count||0;
+    const mtgDelta=wtdMtgCount-lwMtgCount;
+    const deltaEl=document.getElementById('duet-wow-delta');
+    if(deltaEl){
+      deltaEl.textContent=mtgDelta>0?'+'+mtgDelta+' vs last wk':mtgDelta<0?mtgDelta+' vs last wk':'flat vs last wk';
+      deltaEl.style.color=mtgDelta>0?'#16a34a':mtgDelta<0?'#dc2626':'#888';
+    }
+    document.getElementById('duet-eng-badge').textContent=engLeftLabel(CLIENT_CONFIG.duet.engEnd);
     const cls=qualLives>500?'green':qualLives>=200?'yellow':'red-h';
     setHealth('duet',cls,qualLives>500?'Strong pipeline':qualLives>=200?'Moderate pipeline':'Needs attention');
     setTimestamp(data.updatedAt||data.updated_at);
   }catch(e){setHealth('duet','red-h','Failed to load');['duet-qual-lives','duet-qual-deals','duet-gross-savings','duet-last-week','duet-wtd'].forEach(id=>setMetric(id,'Error'))}
 }
+// ─── Engagement config — set engEnd to 'YYYY-MM-DD' once contract dates are confirmed ───
+const CLIENT_CONFIG={
+  messagedesk:{ engEnd: null },
+  duet:       { engEnd: null },
+};
+function engLeftLabel(endDate){
+  if(!endDate)return'Ongoing';
+  const days=Math.ceil((new Date(endDate)-Date.now())/86400000);
+  if(days<0)return'Ended';
+  if(days<=7)return days+'d left';
+  return Math.ceil(days/7)+'w left';
+}
+
+// ─── Sparkline helpers ────────────────────────────────────────────────────────
+function getMondayOf(date){const d=new Date(date);const dow=d.getDay()||7;d.setDate(d.getDate()-(dow-1));d.setHours(0,0,0,0);return d;}
+function buildWeekBuckets(deals,nWeeks){
+  const thisMon=getMondayOf(new Date());
+  const weeks=[];
+  for(let i=nWeeks-1;i>=0;i--){
+    const mon=new Date(thisMon);mon.setDate(thisMon.getDate()-i*7);
+    weeks.push({monMs:mon.getTime(),endMs:mon.getTime()+7*86400000,count:0,
+      label:mon.toLocaleDateString('en-US',{month:'short',day:'numeric'}),isCurrent:i===0});
+  }
+  for(const d of deals){
+    if(!d.meetingBookedAt)continue;
+    const ts=new Date(d.meetingBookedAt).getTime();
+    for(const w of weeks){if(ts>=w.monMs&&ts<w.endMs){w.count++;break;}}
+  }
+  return weeks;
+}
+function renderSparkline(weeks){
+  const max=Math.max(...weeks.map(w=>w.count),1);
+  const H=44,BW=22,GAP=3,W=weeks.length*(BW+GAP)-GAP;
+  let out='';
+  weeks.forEach((w,i)=>{
+    const bh=Math.max(3,Math.round((w.count/max)*H));
+    const x=i*(BW+GAP),y=H-bh;
+    out+=`<rect x="${x}" y="${y}" width="${BW}" height="${bh}" fill="${w.isCurrent?'#fad000':'#f90006'}" rx="2" opacity="${w.isCurrent?0.75:1}"/>`;
+    if(w.count>0)out+=`<text x="${x+BW/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="#888">${w.count}</text>`;
+  });
+  out+=`<text x="0" y="${H+14}" font-size="9" fill="#aaa">${weeks[0].label}</text>`;
+  out+=`<text x="${W}" y="${H+14}" font-size="9" fill="#c2831b" text-anchor="end" font-weight="600">WTD</text>`;
+  return`<svg width="${W}" height="${H+16}" style="overflow:visible;display:block">${out}</svg>`;
+}
+
 const URLS={messagedesk:'https://messagedesk-dashboard.vercel.app/',duet:'https://duet-dashboard.vercel.app/'};
 const NAMES={messagedesk:'MessageDesk',duet:'Duet'};
 const BADGES={messagedesk:'Close.io',duet:'HubSpot'};
