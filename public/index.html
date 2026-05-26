@@ -24,8 +24,8 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
 .hero-sub{margin-top:12px;font-size:16px;color:#555;opacity:0;animation:slideUp 0.65s ease 0.5s forwards}
 @keyframes slideUp{to{opacity:1;transform:translateY(0)}}
 .accent-bar{height:4px;background:linear-gradient(90deg,var(--red) 0%,var(--yellow) 50%,var(--red) 100%);flex-shrink:0}
-.client-tiles{display:flex;gap:24px;justify-content:center;align-items:flex-start;padding:40px 44px 48px;flex:1;flex-wrap:wrap;background:var(--cream)}
-.client-card{background:white;border:2px solid #e8e0d8;border-radius:16px;padding:28px;width:360px;cursor:pointer;transition:transform 0.25s ease,border-color 0.25s ease,box-shadow 0.25s ease;opacity:0;transform:translateY(28px);position:relative;overflow:hidden}
+.client-tiles{display:flex;flex-direction:column;gap:24px;align-items:center;padding:40px 44px 48px;flex:1;background:var(--cream)}
+.client-card{background:white;border:2px solid #e8e0d8;border-radius:16px;padding:28px;cursor:pointer;transition:transform 0.25s ease,border-color 0.25s ease,box-shadow 0.25s ease;opacity:0;transform:translateY(28px);position:relative;overflow:hidden}
 .client-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--red)}
 .client-card.c1{animation:cardIn 0.6s ease 0.6s forwards}
 .client-card.c2{animation:cardIn 0.6s ease 0.75s forwards}
@@ -66,13 +66,20 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
 .client-nav-time{margin-left:auto;font-size:12px;color:rgba(255,255,255,0.4)}
 .client-iframe{flex:1;border:none;width:100%}
 .eng-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:5px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;letter-spacing:0.3px}
+.h-card{display:grid;grid-template-columns:160px 1fr 1.4fr;gap:20px;align-items:start;width:100%;max-width:1020px;cursor:pointer}
+.h-identity{display:flex;flex-direction:column;gap:0}
+.h-identity .card-top{flex-direction:column;align-items:flex-start;gap:6px;margin-bottom:12px}
+.h-identity .health-signal{margin-bottom:16px}
+.h-identity .view-btn{margin-top:auto;padding:10px;font-size:13px}
+.h-section-label{font-size:10px;font-weight:700;color:#bbb;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:12px}
+.h-section-label:first-child{margin-top:0}
 .sparkline-wrap{margin:12px 0 8px;padding:10px 14px;background:var(--cream);border:1px solid #e8e0d8;border-radius:8px}
 .sparkline-header{font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .sparkline-area{min-height:44px}
-@media(max-width:800px){
+@media(max-width:900px){
   .hub-header{padding:0 20px}
   .client-tiles{padding:24px 20px 40px;gap:16px}
-  .client-card{width:100%;max-width:460px}
+  .h-card{grid-template-columns:1fr}
   .hero{padding:36px 20px 28px}
 }
 </style>
@@ -95,60 +102,87 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
     <div class="hero-sub">Select a client to view their full dashboard</div>
   </div>
   <div class="client-tiles">
-    <div class="client-card c1" onclick="openClient('messagedesk')">
-      <div class="card-top">
-        <div class="card-name">MessageDesk</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div class="crm-badge">Close.io</div>
-          <div class="eng-badge" id="md-eng-badge">—</div>
+    <!-- MessageDesk — horizontal card -->
+    <div class="client-card c1 h-card" onclick="openClient('messagedesk')">
+      <div class="h-identity">
+        <div class="card-top">
+          <div class="card-name">MessageDesk</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="crm-badge">Close.io</div>
+            <div class="eng-badge" id="md-eng-badge">—</div>
+          </div>
         </div>
+        <div class="health-signal">
+          <div class="health-dot idle" id="md-dot"></div>
+          <div class="health-text" id="md-health-text">Loading…</div>
+        </div>
+        <button class="view-btn">View Dashboard →</button>
       </div>
-      <div class="health-signal">
-        <div class="health-dot idle" id="md-dot"></div>
-        <div class="health-text" id="md-health-text">Loading…</div>
-      </div>
-      <div class="metrics-grid">
-        <div class="metric"><div class="metric-label">Won ARR</div><div class="metric-value dim" id="md-won-arr">—</div></div>
-        <div class="metric"><div class="metric-label">Won MRR</div><div class="metric-value dim" id="md-won-mrr">—</div></div>
-        <div class="metric"><div class="metric-label">Onboarding MRR</div><div class="metric-value dim" id="md-onboarding-mrr">—</div></div>
-        <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
+      <div>
+        <div class="h-section-label">Revenue</div>
+        <div class="metrics-grid" style="margin-bottom:4px">
+          <div class="metric"><div class="metric-label">Won ARR</div><div class="metric-value dim" id="md-won-arr">—</div></div>
+          <div class="metric"><div class="metric-label">Won MRR</div><div class="metric-value dim" id="md-won-mrr">—</div></div>
+          <div class="metric"><div class="metric-label">Onboarding MRR</div><div class="metric-value dim" id="md-onboarding-mrr">—</div></div>
+          <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
+        </div>
+        <div class="h-section-label">Pipeline</div>
         <div class="metric full" style="padding:0;background:none;border:none">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
             <div class="metric"><div class="metric-label">Pipeline MRR</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
-            <div class="metric"><div class="metric-label">Weighted Pipeline</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
+            <div class="metric"><div class="metric-label">Weighted</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
             <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
           </div>
         </div>
-        <div class="metric full"><div class="metric-label">WoW · Meetings Booked / Held</div><div class="metric-value dim small" id="md-wow-meetings">—</div></div>
-        <div class="metric full"><div class="metric-label">Outbound Pipeline</div><div class="metric-value dim small" id="md-outbound">—</div></div>
       </div>
-      <button class="view-btn">View Dashboard →</button>
+      <div>
+        <div class="h-section-label">Meetings Booked vs. Held · 13 Weeks</div>
+        <div id="md-meetings-chart" class="sparkline-area" style="margin-bottom:14px">—</div>
+        <div class="metric" style="margin-bottom:10px">
+          <div class="metric-label">WoW · Meetings Booked / Held</div>
+          <div class="metric-value dim small" id="md-wow-meetings">—</div>
+        </div>
+        <div class="h-section-label">Outbound Pipeline</div>
+        <div id="md-outbound-list">—</div>
+      </div>
     </div>
-    <div class="client-card c2" onclick="openClient('duet')">
-      <div class="card-top">
-        <div class="card-name">Duet</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div class="crm-badge">HubSpot</div>
-          <div class="eng-badge" id="duet-eng-badge">—</div>
+
+    <!-- Duet — horizontal card -->
+    <div class="client-card c2 h-card" onclick="openClient('duet')">
+      <div class="h-identity">
+        <div class="card-top">
+          <div class="card-name">Duet</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="crm-badge">HubSpot</div>
+            <div class="eng-badge" id="duet-eng-badge">—</div>
+          </div>
+        </div>
+        <div class="health-signal">
+          <div class="health-dot idle" id="duet-dot"></div>
+          <div class="health-text" id="duet-health-text">Loading…</div>
+        </div>
+        <button class="view-btn">View Dashboard →</button>
+      </div>
+      <div>
+        <div class="h-section-label">Pipeline</div>
+        <div class="metrics-grid" style="margin-bottom:4px">
+          <div class="metric"><div class="metric-label">Qualified Lives</div><div class="metric-value dim" id="duet-qual-lives">—</div></div>
+          <div class="metric"><div class="metric-label">Qualified Deals</div><div class="metric-value dim" id="duet-qual-deals">—</div></div>
+          <div class="metric full"><div class="metric-label">Gross Savings (Mtg Booked+)</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
+        </div>
+        <div class="h-section-label">Activity</div>
+        <div class="metrics-grid">
+          <div class="metric full"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
+          <div class="metric full"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
         </div>
       </div>
-      <div class="health-signal">
-        <div class="health-dot idle" id="duet-dot"></div>
-        <div class="health-text" id="duet-health-text">Loading…</div>
+      <div>
+        <div class="sparkline-wrap" style="margin:0">
+          <div class="sparkline-header">Meetings Booked · by Week <span id="duet-wow-delta"></span></div>
+          <div id="duet-sparkline" class="sparkline-area">—</div>
+        </div>
+        <div class="card-note" style="margin-top:8px">Parasol-managed only · yellow = current week (partial)</div>
       </div>
-      <div class="metrics-grid">
-        <div class="metric"><div class="metric-label">Qualified Lives</div><div class="metric-value dim" id="duet-qual-lives">—</div></div>
-        <div class="metric"><div class="metric-label">Qualified Deals</div><div class="metric-value dim" id="duet-qual-deals">—</div></div>
-        <div class="metric full"><div class="metric-label">Gross Savings (Mtg Booked+)</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
-        <div class="metric full"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
-        <div class="metric full"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
-      </div>
-      <div class="sparkline-wrap">
-        <div class="sparkline-header">Meetings Booked · by Week <span id="duet-wow-delta"></span></div>
-        <div id="duet-sparkline" class="sparkline-area">—</div>
-      </div>
-      <div class="card-note">Parasol-managed deals only · yellow bar = current week (partial)</div>
-      <button class="view-btn">View Dashboard →</button>
     </div>
   </div>
   <div class="hub-footer">Built by <span>Parasol</span></div>
@@ -194,9 +228,12 @@ async function loadMD(){
     const bkD=bkThis-bkLast,hdD=hdThis-hdLast;
     setMetric('md-wow-meetings',
       'Booked: '+bkThis+' ('+(bkD>=0?'+':'')+bkD+' vs LW)  ·  Held: '+hdThis+' ('+(hdD>=0?'+':'')+hdD+' vs LW)');
-    // Outbound pipeline (MQL proxy — tag deals in Close.io to refine)
-    const mqlCount=k.mql_count||0;
-    setMetric('md-outbound',mqlCount>0?mqlCount+' MQL leads · '+fmt$(k.mql_mrr||0)+'/mo':'No active MQLs — tag outbound deals in Close.io');
+    // Meetings stacked bar chart (13 weeks)
+    const mdChartEl=document.getElementById('md-meetings-chart');
+    if(mdChartEl){const mdWeeks=buildMdWeekBuckets(data.deals||[],13);mdChartEl.innerHTML=renderMdMeetingsChart(mdWeeks);}
+    // Outbound pipeline list
+    const mdOutEl=document.getElementById('md-outbound-list');
+    if(mdOutEl){mdOutEl.innerHTML=renderOutboundList(data.outbound_deals||[]);}
     document.getElementById('md-eng-badge').textContent=engLeftLabel(CLIENT_CONFIG.messagedesk.engEnd);
     const wonArr=(k.won_mrr||0)*12;
     setHealth('md',wonArr>10000?'green':wonArr>=3000?'yellow':'red-h',wonArr>10000?'Revenue growing':wonArr>=3000?'Moderate revenue':'Early pipeline');
@@ -253,6 +290,65 @@ async function loadDuet(){
     setTimestamp(data.updatedAt||data.updated_at);
   }catch(e){setHealth('duet','red-h','Failed to load');['duet-qual-lives','duet-qual-deals','duet-gross-savings','duet-last-week','duet-wtd'].forEach(id=>setMetric(id,'Error'))}
 }
+// ─── MD meetings stacked bar chart ───────────────────────────────────────────
+function buildMdWeekBuckets(deals, nWeeks) {
+  const thisMon = getMondayOf(new Date());
+  const weeks = [];
+  for (let i = nWeeks - 1; i >= 0; i--) {
+    const mon = new Date(thisMon); mon.setDate(thisMon.getDate() - i * 7);
+    weeks.push({ monMs: mon.getTime(), endMs: mon.getTime() + 7 * 86400000,
+      label: mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      held: 0, no_show: 0 });
+  }
+  for (const d of deals) {
+    if (!d.demo_date) continue;
+    const ts = new Date(d.demo_date + 'T12:00:00Z').getTime();
+    for (const w of weeks) {
+      if (ts >= w.monMs && ts < w.endMs) {
+        if (d.demo_completed) w.held++;
+        else if (d.stage === 'No Showed' || (d.demo_status || '').toLowerCase().includes('no show')) w.no_show++;
+        break;
+      }
+    }
+  }
+  return weeks;
+}
+function renderMdMeetingsChart(weeks) {
+  const maxTotal = Math.max(...weeks.map(w => w.held + w.no_show), 1);
+  const H = 70, BW = 16, GAP = 4, W = weeks.length * (BW + GAP) - GAP;
+  let out = '';
+  weeks.forEach((w, i) => {
+    const x = i * (BW + GAP);
+    const nsH  = Math.round((w.no_show / maxTotal) * H);
+    const hldH = Math.round((w.held    / maxTotal) * H);
+    const totH = nsH + hldH;
+    if (nsH  > 0) out += `<rect x="${x}" y="${H - nsH}"  width="${BW}" height="${nsH}"  fill="#f97316" rx="1"/>`;
+    if (hldH > 0) out += `<rect x="${x}" y="${H - totH}" width="${BW}" height="${hldH}" fill="#16a34a" rx="1"/>`;
+    const tot = w.held + w.no_show;
+    if (tot > 0) out += `<text x="${x+BW/2}" y="${H-totH-3}" text-anchor="middle" font-size="8" fill="#888">${tot}</text>`;
+  });
+  out += `<text x="0" y="${H+14}" font-size="9" fill="#aaa">${weeks[0].label}</text>`;
+  out += `<text x="${W}" y="${H+14}" font-size="9" fill="#888" text-anchor="end">Now</text>`;
+  out += `<rect x="0" y="${H+22}" width="8" height="8" fill="#16a34a" rx="1"/><text x="12" y="${H+30}" font-size="9" fill="#666">Held</text>`;
+  out += `<rect x="46" y="${H+22}" width="8" height="8" fill="#f97316" rx="1"/><text x="58" y="${H+30}" font-size="9" fill="#666">No Show</text>`;
+  return `<svg width="${W}" height="${H+36}" style="overflow:visible;display:block">${out}</svg>`;
+}
+function renderOutboundList(deals) {
+  if (!deals || !deals.length) return '<div style="font-size:11px;color:#aaa;padding:4px 0">No active outbound deals — tag deals in Close.io with<br><em>Parasol Outbound</em> or <em>Parasol Reactivation</em></div>';
+  return deals.slice(0, 6).map(d => {
+    const isReactiv = d.source === 'Parasol Reactivation';
+    const badgeBg = isReactiv ? '#fff8e6' : '#eff6ff';
+    const badgeC  = isReactiv ? '#c2831b' : '#1d6fb5';
+    const label   = isReactiv ? 'Reactiv.' : 'Outbound';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0ece8;font-size:11px">
+      <div style="flex:1;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.company)}">${escHtml(d.company)}</div>
+      <span style="padding:1px 5px;border-radius:3px;background:${badgeBg};color:${badgeC};font-weight:700;white-space:nowrap;font-size:10px">${label}</span>
+      <span style="color:#666;white-space:nowrap">${escHtml(d.stage)}</span>
+      <span style="font-weight:700;color:#333;white-space:nowrap">${fmt$(d.monthly_value)}/mo</span>
+    </div>`;
+  }).join('');
+}
+
 // ─── Engagement config — set engEnd to 'YYYY-MM-DD' once contract dates are confirmed ───
 const CLIENT_CONFIG={
   messagedesk:{ engEnd: null },
