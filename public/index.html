@@ -17,7 +17,7 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
 #last-updated{font-size:12px;color:#888}
 .refresh-btn{background:transparent;border:1.5px solid #e8e0d8;color:#666;padding:6px 14px;border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.2s}
 .refresh-btn:hover{border-color:var(--red);color:var(--red)}
-.hero{text-align:center;padding:56px 20px 40px;flex-shrink:0;background:var(--cream)}
+.hero{text-align:center;padding:20px 20px 12px;flex-shrink:0;background:var(--cream)}
 .hero-eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--red);margin-bottom:12px}
 .hero-tagline{font-size:clamp(32px,5vw,56px);font-weight:800;letter-spacing:-1.5px;line-height:1.05;color:var(--black);opacity:0;transform:translateY(20px);animation:slideUp 0.7s ease 0.3s forwards}
 .hero-tagline .accent{color:var(--red)}
@@ -80,7 +80,7 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
   .hub-header{padding:0 20px}
   .client-tiles{padding:24px 20px 40px;gap:16px}
   .h-card{grid-template-columns:1fr}
-  .hero{padding:36px 20px 28px}
+  .hero{padding:16px 20px 8px}
 }
 </style>
 </head>
@@ -98,7 +98,6 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
   <div class="accent-bar"></div>
   <div class="hero">
     <div class="hero-eyebrow">Client Dashboard Portal</div>
-    <div class="hero-tagline">Your Clients. <span class="accent">One View.</span></div>
     <div class="hero-sub">Select a client to view their full dashboard</div>
   </div>
   <div class="client-tiles">
@@ -316,6 +315,7 @@ function buildMdWeekBuckets(deals, nWeeks) {
 function renderMdMeetingsChart(weeks) {
   const maxTotal = Math.max(...weeks.map(w => w.held + w.no_show), 1);
   const H = 70, BW = 16, GAP = 4, W = weeks.length * (BW + GAP) - GAP;
+  const LABEL_H = 24; // space below bars for rotated date labels
   let out = '';
   weeks.forEach((w, i) => {
     const x = i * (BW + GAP);
@@ -326,13 +326,17 @@ function renderMdMeetingsChart(weeks) {
     if (hldH > 0) out += `<rect x="${x}" y="${H - totH}" width="${BW}" height="${hldH}" fill="#16a34a" rx="1"/>`;
     const tot = w.held + w.no_show;
     if (tot > 0) out += `<text x="${x+BW/2}" y="${H-totH-3}" text-anchor="middle" font-size="8" fill="#888">${tot}</text>`;
+    // x-axis date label — every other bar, rotated -40° to avoid overlap
+    if (i % 2 === 0) {
+      const lx = x + BW/2, ly = H + 8;
+      out += `<text x="${lx}" y="${ly}" font-size="7.5" fill="#aaa" text-anchor="end" transform="rotate(-40,${lx},${ly})">${w.label}</text>`;
+    }
   });
-  out += `<text x="0" y="${H+14}" font-size="9" fill="#aaa">${weeks[0].label}</text>`;
-  out += `<text x="${W}" y="${H+14}" font-size="9" fill="#888" text-anchor="end">Now</text>`;
-  out += `<rect x="0" y="${H+22}" width="8" height="8" fill="#16a34a" rx="1"/><text x="12" y="${H+30}" font-size="9" fill="#666">Held</text>`;
-  out += `<rect x="46" y="${H+22}" width="8" height="8" fill="#f97316" rx="1"/><text x="58" y="${H+30}" font-size="9" fill="#666">No Show</text>`;
-  return `<svg width="${W}" height="${H+36}" style="overflow:visible;display:block">${out}</svg>`;
+  out += `<rect x="0" y="${H+LABEL_H+4}" width="8" height="8" fill="#16a34a" rx="1"/><text x="12" y="${H+LABEL_H+12}" font-size="9" fill="#666">Held</text>`;
+  out += `<rect x="46" y="${H+LABEL_H+4}" width="8" height="8" fill="#f97316" rx="1"/><text x="58" y="${H+LABEL_H+12}" font-size="9" fill="#666">No Show</text>`;
+  return `<svg viewBox="0 0 ${W} ${H+LABEL_H+20}" width="100%" style="overflow:visible;display:block">${out}</svg>`;
 }
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function renderOutboundList(deals) {
   if (!deals || !deals.length) return '<div style="font-size:11px;color:#aaa;padding:4px 0">No active outbound deals — tag deals in Close.io with<br><em>Parasol Outbound</em> or <em>Parasol Reactivation</em></div>';
   return deals.slice(0, 6).map(d => {
@@ -340,10 +344,14 @@ function renderOutboundList(deals) {
     const badgeBg = isReactiv ? '#fff8e6' : '#eff6ff';
     const badgeC  = isReactiv ? '#c2831b' : '#1d6fb5';
     const label   = isReactiv ? 'Reactiv.' : 'Outbound';
+    const dateStr = d.close_date
+      ? new Date(d.close_date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})
+      : '';
     return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f0ece8;font-size:11px">
       <div style="flex:1;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.company)}">${escHtml(d.company)}</div>
       <span style="padding:1px 5px;border-radius:3px;background:${badgeBg};color:${badgeC};font-weight:700;white-space:nowrap;font-size:10px">${label}</span>
       <span style="color:#666;white-space:nowrap">${escHtml(d.stage)}</span>
+      ${dateStr ? `<span style="color:#aaa;white-space:nowrap;font-size:10px">${dateStr}</span>` : ''}
       <span style="font-weight:700;color:#333;white-space:nowrap">${fmt$(d.monthly_value)}/mo</span>
     </div>`;
   }).join('');
