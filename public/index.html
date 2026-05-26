@@ -109,9 +109,18 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
       </div>
       <div class="metrics-grid">
         <div class="metric"><div class="metric-label">Won ARR</div><div class="metric-value dim" id="md-won-arr">—</div></div>
+        <div class="metric"><div class="metric-label">Won MRR</div><div class="metric-value dim" id="md-won-mrr">—</div></div>
         <div class="metric"><div class="metric-label">Onboarding MRR</div><div class="metric-value dim" id="md-onboarding-mrr">—</div></div>
-        <div class="metric"><div class="metric-label">Weighted Pipeline</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
-        <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
+        <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
+        <div class="metric full" style="padding:0;background:none;border:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div class="metric"><div class="metric-label">Pipeline MRR</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
+            <div class="metric"><div class="metric-label">Weighted Pipeline</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
+            <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
+          </div>
+        </div>
+        <div class="metric full"><div class="metric-label">WoW · Meetings Booked / Held</div><div class="metric-value dim small" id="md-wow-meetings">—</div></div>
+        <div class="metric full"><div class="metric-label">Outbound Pipeline</div><div class="metric-value dim small" id="md-outbound">—</div></div>
       </div>
       <button class="view-btn">View Dashboard →</button>
     </div>
@@ -173,9 +182,21 @@ async function loadMD(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();const k=data.kpis||{};
     setMetric('md-won-arr',fmt$((k.won_mrr||0)*12));
+    setMetric('md-won-mrr',fmt$(k.won_mrr||0));
     setMetric('md-onboarding-mrr',fmt$(k.onboarding_mrr||0));
+    setMetric('md-win-rate',(k.win_rate||0)+'%');
+    setMetric('md-pipeline-mrr',fmt$(k.active_mrr||0));
     setMetric('md-weighted-pipeline',fmt$(k.weighted_mrr||0));
     setMetric('md-active-deals',k.active_count||0);
+    // WoW meetings booked / held
+    const bkThis=k.mtg_booked_this_week||0,bkLast=k.mtg_booked_last_week||0;
+    const hdThis=k.mtg_held_this_week||0,hdLast=k.mtg_held_last_week||0;
+    const bkD=bkThis-bkLast,hdD=hdThis-hdLast;
+    setMetric('md-wow-meetings',
+      'Booked: '+bkThis+' ('+(bkD>=0?'+':'')+bkD+' vs LW)  ·  Held: '+hdThis+' ('+(hdD>=0?'+':'')+hdD+' vs LW)');
+    // Outbound pipeline (MQL proxy — tag deals in Close.io to refine)
+    const mqlCount=k.mql_count||0;
+    setMetric('md-outbound',mqlCount>0?mqlCount+' MQL leads · '+fmt$(k.mql_mrr||0)+'/mo':'No active MQLs — tag outbound deals in Close.io');
     document.getElementById('md-eng-badge').textContent=engLeftLabel(CLIENT_CONFIG.messagedesk.engEnd);
     const wonArr=(k.won_mrr||0)*12;
     setHealth('md',wonArr>10000?'green':wonArr>=3000?'yellow':'red-h',wonArr>10000?'Revenue growing':wonArr>=3000?'Moderate revenue':'Early pipeline');
