@@ -169,10 +169,25 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
           <div class="metric"><div class="metric-label">Qualified Deals</div><div class="metric-value dim" id="duet-qual-deals">—</div></div>
           <div class="metric full"><div class="metric-label">Gross Savings (Mtg Booked+)</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
         </div>
-        <div class="h-section-label">Activity</div>
-        <div class="metrics-grid">
+        <div class="metric full" style="margin-bottom:4px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+            <div class="metric-label" style="margin-bottom:0">Lives to Goal · 5,000</div>
+            <div style="font-size:11px;font-weight:700;color:var(--black)" id="duet-goal-pct">—</div>
+          </div>
+          <div style="background:#e8e0d8;border-radius:3px;height:6px">
+            <div id="duet-goal-bar" style="height:6px;background:var(--red);border-radius:3px;width:0%;transition:width 1s ease"></div>
+          </div>
+          <div style="font-size:10px;color:#aaa;margin-top:4px" id="duet-goal-sub"></div>
+        </div>
+        <div class="h-section-label">Activity · Weekly</div>
+        <div class="metrics-grid" style="margin-bottom:4px">
           <div class="metric full"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
           <div class="metric full"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
+        </div>
+        <div class="h-section-label">Activity · Monthly</div>
+        <div class="metrics-grid">
+          <div class="metric full"><div class="metric-label">Last Month · Mtgs Booked</div><div class="metric-value dim small" id="duet-last-month">—</div></div>
+          <div class="metric full"><div class="metric-label">MTD · Mtgs Booked</div><div class="metric-value dim small" id="duet-mtd">—</div></div>
         </div>
       </div>
       <div>
@@ -281,6 +296,28 @@ async function loadDuet(){
     setMetric('duet-gross-savings',fmt$(qualSavings));
     setMetric('duet-last-week','Calls '+lwCalls+' · Mtgs '+lastWkMtgs+' · Fwd '+lastWkFwd);
     setMetric('duet-wtd','Calls '+wtdCalls+' · Mtgs '+wtdMtgs+' · Fwd '+wtdFwd);
+    // Monthly meetings
+    const thisMonStart=new Date(now.getFullYear(),now.getMonth(),1);
+    const nextMonStart=new Date(now.getFullYear(),now.getMonth()+1,1);
+    const lastMonStart=new Date(now.getFullYear(),now.getMonth()-1,1);
+    const inMonth=(d,from,to)=>{if(!d.meetingBookedAt)return false;const t=new Date(d.meetingBookedAt);return t>=from&&t<to;};
+    const thisMoMtgs=deals.filter(d=>inMonth(d,thisMonStart,nextMonStart)).length;
+    const lastMoMtgs=deals.filter(d=>inMonth(d,lastMonStart,thisMonStart)).length;
+    const momDelta=thisMoMtgs-lastMoMtgs;
+    const lastMonName=new Date(lastMonStart).toLocaleDateString('en-US',{month:'long'});
+    const thisMonName=new Date(thisMonStart).toLocaleDateString('en-US',{month:'long'});
+    setMetric('duet-last-month',lastMonName+': '+lastMoMtgs+' mtgs');
+    setMetric('duet-mtd',thisMonName+' MTD: '+thisMoMtgs+' mtgs ('+(momDelta>=0?'+':'')+momDelta+' vs last mo)');
+    // Goal tracker
+    const GOAL_LIVES=5000;
+    const goalPct=Math.min(100,Math.round((qualLives/GOAL_LIVES)*100));
+    const goalGap=Math.max(0,GOAL_LIVES-qualLives);
+    const goalPctEl=document.getElementById('duet-goal-pct');
+    const goalBarEl=document.getElementById('duet-goal-bar');
+    const goalSubEl=document.getElementById('duet-goal-sub');
+    if(goalPctEl)goalPctEl.textContent=goalPct+'%';
+    if(goalBarEl)setTimeout(()=>{goalBarEl.style.width=goalPct+'%'},100);
+    if(goalSubEl)goalSubEl.textContent=fmtNum(qualLives)+' / 5,000 · '+fmtNum(goalGap)+' to go';
     // Sparkline — bucket meetingBookedAt by week across Parasol-managed deals
     const wkBuckets=buildWeekBuckets(deals,10);
     const sparkEl=document.getElementById('duet-sparkline');
