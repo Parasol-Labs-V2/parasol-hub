@@ -74,7 +74,8 @@ async function fetchStageHistory(dealIds) {
   const stageEnteredMap = {};
   const chunks = [];
   for (let i = 0; i < dealIds.length; i += 50) chunks.push(dealIds.slice(i, i + 50));
-  for (const chunk of chunks) {
+  // Fetch all chunks in parallel — much faster than sequential
+  await Promise.all(chunks.map(async (chunk) => {
     try {
       const body = { inputs: chunk.map(id => ({ id })), propertiesWithHistory: ['dealstage'] };
       const r = await axios.post(`${HS_BASE}/crm/v3/objects/deals/batch/read`, body, {
@@ -92,7 +93,7 @@ async function fetchStageHistory(dealIds) {
         stageEnteredMap[result.id] = { meetingBookedAt, qualifiedAt };
       }
     } catch(e) { console.error('Stage history fetch error:', e.message); }
-  }
+  }));
   return stageEnteredMap;
 }
 
@@ -122,9 +123,11 @@ async function fetchDuetDeals() {
   const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
   await Promise.all(ownerIds.map(id => resolveOwner(id)));
 
-  const QUAL_IDS = new Set(['3467751100','3446820540','3467565765','3477604030','3446820542','3446820543']);
-  const qualDeals = deals.filter(d => QUAL_IDS.has(d.properties?.dealstage));
-  const stageHistoryMap = await fetchStageHistory(qualDeals.map(d => d.id));
+  // Fetch history for all Parasol-owned deals (not just currently-qualified ones)
+  // so we catch deals that were Meeting Booked and later bounced back to earlier stages
+  const PARASOL_OWNER_IDS = new Set(['163553854','83189293','164358712']); // Florencia, Joe, Lauren
+  const parasolDeals = deals.filter(d => PARASOL_OWNER_IDS.has(d.properties?.hubspot_owner_id || ''));
+  const stageHistoryMap = await fetchStageHistory(parasolDeals.map(d => d.id));
 
   const mapped = deals.map(d => {
     const p = d.properties || {};

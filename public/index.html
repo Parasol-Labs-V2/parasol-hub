@@ -203,8 +203,8 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
           <div class="h-section-label">Activity · Monthly</div>
           <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;align-items:start">
             <div style="display:flex;flex-direction:column;gap:8px">
-              <div class="metric"><div class="metric-label">Last Month · Mtgs Booked</div><div class="metric-value dim small" id="duet-last-month">—</div></div>
-              <div class="metric"><div class="metric-label">MTD · Mtgs Booked</div><div class="metric-value dim small" id="duet-mtd">—</div></div>
+              <div class="metric"><div class="metric-label">Last Month · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-month">—</div></div>
+              <div class="metric"><div class="metric-label">MTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-mtd">—</div></div>
             </div>
             <div class="sparkline-wrap" style="margin:0">
               <div class="sparkline-header">Meetings Booked · by Month <span id="duet-mom-delta"></span></div>
@@ -321,10 +321,17 @@ async function loadDuet(){
     const thisMoMtgs=deals.filter(d=>inMonth(d,thisMonStart,nextMonStart)).length;
     const lastMoMtgs=deals.filter(d=>inMonth(d,lastMonStart,thisMonStart)).length;
     const momDelta=thisMoMtgs-lastMoMtgs;
+    // Monthly calls — sum weekly buckets whose startMs falls within the month
+    const wkBucketsAll=tp?.weeklyCallVolume||[];
+    const moCallsLast=wkBucketsAll.filter(b=>(b.startMs||0)>=lastMonStart.getTime()&&(b.startMs||0)<thisMonStart.getTime()).reduce((s,b)=>s+(b.calls||0),0);
+    const moCallsThis=wkBucketsAll.filter(b=>(b.startMs||0)>=thisMonStart.getTime()&&(b.startMs||0)<nextMonStart.getTime()).reduce((s,b)=>s+(b.calls||0),0);
+    // Monthly deals fwd — qualifiedAt within month and currently in qualified stage
+    const lastMoFwd=deals.filter(d=>{if(!d.qualifiedAt)return false;const t=new Date(d.qualifiedAt);return t>=lastMonStart&&t<thisMonStart&&QUALIFIED_STAGES.has(d.stage||'');}).length;
+    const thisMoFwd=deals.filter(d=>{if(!d.qualifiedAt)return false;const t=new Date(d.qualifiedAt);return t>=thisMonStart&&t<nextMonStart&&QUALIFIED_STAGES.has(d.stage||'');}).length;
     const lastMonName=new Date(lastMonStart).toLocaleDateString('en-US',{month:'long'});
     const thisMonName=new Date(thisMonStart).toLocaleDateString('en-US',{month:'long'});
-    setMetric('duet-last-month',lastMonName+': '+lastMoMtgs+' mtgs');
-    setMetric('duet-mtd',thisMonName+' MTD: '+thisMoMtgs+' mtgs ('+(momDelta>=0?'+':'')+momDelta+' vs last mo)');
+    setMetric('duet-last-month',lastMonName+': Calls '+moCallsLast+' · Mtgs '+lastMoMtgs+' · Fwd '+lastMoFwd);
+    setMetric('duet-mtd',thisMonName+' MTD: Calls '+moCallsThis+' · Mtgs '+thisMoMtgs+' · Fwd '+thisMoFwd+' ('+(momDelta>=0?'+':'')+momDelta+' mtgs vs last mo)');
     // Goal tracker
     const GOAL_LIVES=5000;
     const goalPct=Math.min(100,Math.round((qualLives/GOAL_LIVES)*100));
@@ -493,17 +500,22 @@ function buildWeekBuckets(deals,nWeeks){
 }
 function renderSparkline(weeks){
   const max=Math.max(...weeks.map(w=>w.count),1);
-  const H=44,BW=22,GAP=3,W=weeks.length*(BW+GAP)-GAP;
+  const H=44,BW=22,GAP=3,LABEL_H=20,W=weeks.length*(BW+GAP)-GAP;
   let out='';
   weeks.forEach((w,i)=>{
     const bh=Math.max(3,Math.round((w.count/max)*H));
     const x=i*(BW+GAP),y=H-bh;
     out+=`<rect x="${x}" y="${y}" width="${BW}" height="${bh}" fill="${w.isCurrent?'#fad000':'#f90006'}" rx="2" opacity="${w.isCurrent?0.75:1}"/>`;
     if(w.count>0)out+=`<text x="${x+BW/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="#888">${w.count}</text>`;
+    // x-axis label every other bar, rotated to avoid overlap; last bar always gets WTD label
+    if(w.isCurrent){
+      out+=`<text x="${x+BW/2}" y="${H+10}" text-anchor="middle" font-size="8.5" fill="#c2831b" font-weight="600">WTD</text>`;
+    } else if(i%2===0){
+      const lx=x+BW/2,ly=H+8;
+      out+=`<text x="${lx}" y="${ly}" font-size="7.5" fill="#aaa" text-anchor="end" transform="rotate(-40,${lx},${ly})">${w.label}</text>`;
+    }
   });
-  out+=`<text x="0" y="${H+14}" font-size="9" fill="#aaa">${weeks[0].label}</text>`;
-  out+=`<text x="${W}" y="${H+14}" font-size="9" fill="#c2831b" text-anchor="end" font-weight="600">WTD</text>`;
-  return`<svg width="${W}" height="${H+16}" style="overflow:visible;display:block">${out}</svg>`;
+  return`<svg viewBox="0 0 ${W} ${H+LABEL_H}" width="100%" style="overflow:visible;display:block">${out}</svg>`;
 }
 
 const URLS={messagedesk:'https://messagedesk-dashboard.vercel.app/',duet:'https://duet-dashboard.vercel.app/'};
