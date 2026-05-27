@@ -73,7 +73,7 @@ async function resolveOwner(id) {
 async function fetchStageHistory(dealIds) {
   const stageEnteredMap = {};
   const chunks = [];
-  for (let i = 0; i < dealIds.length; i += 100) chunks.push(dealIds.slice(i, i + 100));
+  for (let i = 0; i < dealIds.length; i += 50) chunks.push(dealIds.slice(i, i + 50));
   for (const chunk of chunks) {
     try {
       const body = { inputs: chunk.map(id => ({ id })), propertiesWithHistory: ['dealstage'] };
@@ -102,7 +102,7 @@ async function fetchDuetDeals() {
 
   const deals = [];
   let after = null;
-  const PROPS = 'dealname,dealstage,pipeline,hubspot_owner_id,closedate,hs_lastmodifieddate,attribution_2024_lives,gross_savings_2024_deal,outreach_attempt_count,last_outreach_date,meeting_date,loi_sent_date,loi_signed_date,enrollment_date,enrollment_deadline,champion_name,champion_role,lost_reason,deal_source,duet_engaged_owner,secondary_owner,meeting_set,np_intro_made';
+  const PROPS = 'dealname,dealstage,pipeline,hubspot_owner_id,closedate,hs_lastmodifieddate,attribution_2024_lives,gross_savings_2024_deal,outreach_attempt_count,last_outreach_date,meeting_date,loi_sent_date,loi_signed_date,enrollment_date,enrollment_deadline,champion_name,champion_role,lost_reason,deal_source,duet_engaged_owner,secondary_owner,meeting_set,np_intro_made,hs_date_entered_3467751100';
 
   while (true) {
     const body = {
@@ -122,7 +122,7 @@ async function fetchDuetDeals() {
   const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
   await Promise.all(ownerIds.map(id => resolveOwner(id)));
 
-  const QUAL_IDS = new Set(["3467751100","3446820540","3467565765","3477604030","3446820542","3446820543"]);
+  const QUAL_IDS = new Set(['3467751100','3446820540','3467565765','3477604030','3446820542','3446820543']);
   const qualDeals = deals.filter(d => QUAL_IDS.has(d.properties?.dealstage));
   const stageHistoryMap = await fetchStageHistory(qualDeals.map(d => d.id));
 
@@ -151,7 +151,7 @@ async function fetchDuetDeals() {
       lost_reason: p.lost_reason || '',
       meeting_set: p.meeting_set || '',
       meetingBookedAt: history.meetingBookedAt || null,
-      qualifiedAt: history.qualifiedAt || null,
+      qualifiedAt:     history.qualifiedAt     || null,
     };
   });
 
@@ -159,6 +159,7 @@ async function fetchDuetDeals() {
   setCache('duet', result);
   return result;
 }
+
 
 app.get('/api/duet/deals', async (req, res) => {
   try {
