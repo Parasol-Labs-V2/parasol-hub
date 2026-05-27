@@ -472,16 +472,16 @@ function buildMonthBuckets(deals,nMonths){
 }
 function renderMonthSparkline(months){
   const max=Math.max(...months.map(m=>m.count),1);
-  const H=44,BW=26,GAP=5,W=months.length*(BW+GAP)-GAP;
+  const H=44,BW=34,GAP=8,LABEL_H=16,W=months.length*(BW+GAP)-GAP;
   let out='';
   months.forEach((m,i)=>{
     const bh=Math.max(3,Math.round((m.count/max)*H));
     const x=i*(BW+GAP),y=H-bh;
     out+=`<rect x="${x}" y="${y}" width="${BW}" height="${bh}" fill="${m.isCurrent?'#fad000':'#f90006'}" rx="2" opacity="${m.isCurrent?0.75:1}"/>`;
     if(m.count>0)out+=`<text x="${x+BW/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="#888">${m.count}</text>`;
-    out+=`<text x="${x+BW/2}" y="${H+12}" text-anchor="middle" font-size="9" fill="#aaa">${m.label}</text>`;
+    out+=`<text x="${x+BW/2}" y="${H+LABEL_H}" text-anchor="middle" font-size="9" fill="${m.isCurrent?'#c2831b':'#aaa'}" ${m.isCurrent?'font-weight="600"':''}>${m.label}</text>`;
   });
-  return`<svg width="${W}" height="${H+16}" style="overflow:visible;display:block">${out}</svg>`;
+  return`<svg viewBox="0 0 ${W} ${H+LABEL_H+2}" width="100%" style="overflow:visible;display:block">${out}</svg>`;
 }
 function buildWeekBuckets(deals,nWeeks){
   const thisMon=getMondayOf(new Date());
@@ -509,10 +509,11 @@ function renderSparkline(weeks){
     if(w.count>0)out+=`<text x="${x+BW/2}" y="${y-3}" text-anchor="middle" font-size="9" fill="#888">${w.count}</text>`;
     // x-axis label every other bar, rotated to avoid overlap; last bar always gets WTD label
     if(w.isCurrent){
-      out+=`<text x="${x+BW/2}" y="${H+10}" text-anchor="middle" font-size="8.5" fill="#c2831b" font-weight="600">WTD</text>`;
+      out+=`<text x="${x+BW/2}" y="${H+13}" text-anchor="middle" font-size="8" fill="#c2831b" font-weight="600">WTD</text>`;
     } else if(i%2===0){
-      const lx=x+BW/2,ly=H+8;
-      out+=`<text x="${lx}" y="${ly}" font-size="7.5" fill="#aaa" text-anchor="end" transform="rotate(-40,${lx},${ly})">${w.label}</text>`;
+      // Short m/dd format fits straight (no rotation needed)
+      const mon=new Date(w.monMs);const shortLbl=`${mon.getMonth()+1}/${mon.getDate()}`;
+      out+=`<text x="${x+BW/2}" y="${H+13}" text-anchor="middle" font-size="8" fill="#aaa">${shortLbl}</text>`;
     }
   });
   return`<svg viewBox="0 0 ${W} ${H+LABEL_H}" width="100%" style="overflow:visible;display:block">${out}</svg>`;
