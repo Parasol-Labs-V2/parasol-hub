@@ -148,6 +148,7 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
 
     <!-- Duet — horizontal card -->
     <div class="client-card c2 h-card" onclick="openClient('duet')">
+      <!-- Col 1: identity -->
       <div class="h-identity">
         <div class="card-top">
           <div class="card-name">Duet</div>
@@ -172,32 +173,44 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
         </div>
         <button class="view-btn">View Dashboard →</button>
       </div>
-      <div>
-        <div class="h-section-label">Pipeline</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-          <div class="metric"><div class="metric-label">Qualified Deals</div><div class="metric-value dim" id="duet-qual-deals">—</div></div>
-          <div class="metric"><div class="metric-label">Qualified Lives</div><div class="metric-value dim" id="duet-qual-lives">—</div></div>
-          <div class="metric"><div class="metric-label">Gross Savings</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
+      <!-- Cols 2-3: unified content area with anchored rows -->
+      <div style="grid-column:2/-1;display:flex;flex-direction:column;gap:0">
+        <!-- Pipeline row: full width -->
+        <div style="margin-bottom:10px">
+          <div class="h-section-label">Pipeline</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+            <div class="metric"><div class="metric-label">Qualified Deals</div><div class="metric-value dim" id="duet-qual-deals">—</div></div>
+            <div class="metric"><div class="metric-label">Qualified Lives</div><div class="metric-value dim" id="duet-qual-lives">—</div></div>
+            <div class="metric"><div class="metric-label">Gross Savings</div><div class="metric-value dim" id="duet-gross-savings">—</div></div>
+          </div>
         </div>
-        <div class="h-section-label">Activity · Weekly</div>
-        <div class="metrics-grid" style="margin-bottom:4px">
-          <div class="metric full"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
-          <div class="metric full"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
+        <!-- Weekly row: activity tiles + weekly chart side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;align-items:start;margin-bottom:10px">
+          <div>
+            <div class="h-section-label">Activity · Weekly</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="metric"><div class="metric-label">Last Week · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-last-week">—</div></div>
+              <div class="metric"><div class="metric-label">WTD · Calls / Mtgs Booked / Deals Fwd</div><div class="metric-value dim small" id="duet-wtd">—</div></div>
+            </div>
+          </div>
+          <div class="sparkline-wrap" style="margin:0">
+            <div class="sparkline-header">Meetings Booked · by Week <span id="duet-wow-delta"></span></div>
+            <div id="duet-sparkline" class="sparkline-area">—</div>
+          </div>
         </div>
-        <div class="h-section-label">Activity · Monthly</div>
-        <div class="metrics-grid">
-          <div class="metric full"><div class="metric-label">Last Month · Mtgs Booked</div><div class="metric-value dim small" id="duet-last-month">—</div></div>
-          <div class="metric full"><div class="metric-label">MTD · Mtgs Booked</div><div class="metric-value dim small" id="duet-mtd">—</div></div>
-        </div>
-      </div>
-      <div>
-        <div class="sparkline-wrap" style="margin:0 0 10px 0">
-          <div class="sparkline-header">Meetings Booked · by Week <span id="duet-wow-delta"></span></div>
-          <div id="duet-sparkline" class="sparkline-area">—</div>
-        </div>
-        <div class="sparkline-wrap" style="margin:0">
-          <div class="sparkline-header">Meetings Booked · by Month <span id="duet-mom-delta"></span></div>
-          <div id="duet-month-sparkline" class="sparkline-area">—</div>
+        <!-- Monthly row: activity tiles + monthly chart side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;align-items:start">
+          <div>
+            <div class="h-section-label">Activity · Monthly</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="metric"><div class="metric-label">Last Month · Mtgs Booked</div><div class="metric-value dim small" id="duet-last-month">—</div></div>
+              <div class="metric"><div class="metric-label">MTD · Mtgs Booked</div><div class="metric-value dim small" id="duet-mtd">—</div></div>
+            </div>
+          </div>
+          <div class="sparkline-wrap" style="margin:0">
+            <div class="sparkline-header">Meetings Booked · by Month <span id="duet-mom-delta"></span></div>
+            <div id="duet-month-sparkline" class="sparkline-area">—</div>
+          </div>
         </div>
         <div class="card-note" style="margin-top:8px">Parasol-managed only · yellow = current period (partial)</div>
       </div>
