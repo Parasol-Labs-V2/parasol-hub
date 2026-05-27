@@ -262,10 +262,10 @@ async function loadMD(){
     const AS=new Set(['Champion Confirmed','Active Evaluation','Meeting Scheduled','MQLs']);
     const weightedMrr=deals.filter(d=>AS.has(d.stage)).reduce((s,d)=>s+d.monthly_value*(SW[d.stage]||0.20),0);
     setMetric('md-weighted-pipeline',fmt$(weightedMrr));
-    const bkThis=deals.filter(d=>d.stage==='Meeting Scheduled'&&_inThis(d.date_updated)).length;
-    const bkLast=deals.filter(d=>d.stage==='Meeting Scheduled'&&_inLast(d.date_updated)).length;
-    const hdThis=deals.filter(d=>d.demo_completed&&d.demo_date&&_inThis(d.demo_date+'T12:00:00Z')).length;
-    const hdLast=deals.filter(d=>d.demo_completed&&d.demo_date&&_inLast(d.demo_date+'T12:00:00Z')).length;
+    const bkThis=deals.filter(d=>d.meetingScheduledAt&&_inThis(d.meetingScheduledAt)).length;
+    const bkLast=deals.filter(d=>d.meetingScheduledAt&&_inLast(d.meetingScheduledAt)).length;
+    const hdThis=deals.filter(d=>(d.meetingHeldAt&&_inThis(d.meetingHeldAt))||(d.meetingNoShowAt&&_inThis(d.meetingNoShowAt))).length;
+    const hdLast=deals.filter(d=>(d.meetingHeldAt&&_inLast(d.meetingHeldAt))||(d.meetingNoShowAt&&_inLast(d.meetingNoShowAt))).length;
     const bkD=bkThis-bkLast,hdD=hdThis-hdLast;
     setMetric('md-wow-meetings',
       'Booked: '+bkThis+' ('+(bkD>=0?'+':'')+bkD+' vs LW)  ·  Held: '+hdThis+' ('+(hdD>=0?'+':'')+hdD+' vs LW)');
@@ -372,51 +372,70 @@ async function loadDuet(){
     setTimestamp(data.updatedAt||data.updated_at);
   }catch(e){setHealth('duet','red-h','Failed to load');['duet-qual-lives','duet-qual-deals','duet-gross-savings','duet-last-week','duet-wtd'].forEach(id=>setMetric(id,'Error'))}
 }
-// ─── MD meetings stacked bar chart ───────────────────────────────────────────
+// ─── MD meetings chart: booked (red) + held (green) + no-show (orange) by week ─
 function buildMdWeekBuckets(deals, nWeeks) {
   const thisMon = getMondayOf(new Date());
   const weeks = [];
   for (let i = nWeeks - 1; i >= 0; i--) {
     const mon = new Date(thisMon); mon.setDate(thisMon.getDate() - i * 7);
     weeks.push({ monMs: mon.getTime(), endMs: mon.getTime() + 7 * 86400000,
-      label: mon.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      held: 0, no_show: 0 });
+      label: `${mon.getMonth()+1}/${mon.getDate()}`,
+      isCurrent: i === 0,
+      booked: 0, held: 0, no_show: 0 });
   }
   for (const d of deals) {
-    if (!d.demo_date) continue;
-    const ts = new Date(d.demo_date + 'T12:00:00Z').getTime();
-    for (const w of weeks) {
-      if (ts >= w.monMs && ts < w.endMs) {
-        if (d.demo_completed) w.held++;
-        else if (d.stage === 'No Showed' || (d.demo_status || '').toLowerCase().includes('no show')) w.no_show++;
-        break;
-      }
+    // Booked: when deal entered Meeting Scheduled stage
+    if (d.meetingScheduledAt) {
+      const ts = new Date(d.meetingScheduledAt).getTime();
+      for (const w of weeks) { if (ts >= w.monMs && ts < w.endMs) { w.booked++; break; } }
+    }
+    // Held: when deal exited Meeting Scheduled to a positive/forward stage
+    if (d.meetingHeldAt) {
+      const ts = new Date(d.meetingHeldAt).getTime();
+      for (const w of weeks) { if (ts >= w.monMs && ts < w.endMs) { w.held++; break; } }
+    }
+    // No show: when deal moved to "Closed Lost - No Showed"
+    if (d.meetingNoShowAt) {
+      const ts = new Date(d.meetingNoShowAt).getTime();
+      for (const w of weeks) { if (ts >= w.monMs && ts < w.endMs) { w.no_show++; break; } }
     }
   }
   return weeks;
 }
 function renderMdMeetingsChart(weeks) {
-  const maxTotal = Math.max(...weeks.map(w => w.held + w.no_show), 1);
-  const H = 70, BW = 16, GAP = 4, W = weeks.length * (BW + GAP) - GAP;
-  const LABEL_H = 24; // space below bars for rotated date labels
+  const maxAll = Math.max(...weeks.map(w => Math.max(w.booked, w.held + w.no_show)), 1);
+  const H = 70, BW = 10, IGAP = 2, GGAP = 6, LABEL_H = 20;
+  const groupW = BW * 2 + IGAP;
+  const W = weeks.length * (groupW + GGAP) - GGAP;
   let out = '';
   weeks.forEach((w, i) => {
-    const x = i * (BW + GAP);
-    const nsH  = Math.round((w.no_show / maxTotal) * H);
-    const hldH = Math.round((w.held    / maxTotal) * H);
-    const totH = nsH + hldH;
-    if (nsH  > 0) out += `<rect x="${x}" y="${H - nsH}"  width="${BW}" height="${nsH}"  fill="#f97316" rx="1"/>`;
-    if (hldH > 0) out += `<rect x="${x}" y="${H - totH}" width="${BW}" height="${hldH}" fill="#16a34a" rx="1"/>`;
-    const tot = w.held + w.no_show;
-    if (tot > 0) out += `<text x="${x+BW/2}" y="${H-totH-3}" text-anchor="middle" font-size="8" fill="#888">${tot}</text>`;
-    // x-axis date label — every other bar, rotated -40° to avoid overlap
-    if (i % 2 === 0) {
-      const lx = x + BW/2, ly = H + 8;
-      out += `<text x="${lx}" y="${ly}" font-size="7.5" fill="#aaa" text-anchor="end" transform="rotate(-40,${lx},${ly})">${w.label}</text>`;
+    const gx = i * (groupW + GGAP);
+    // Left bar: Booked (red / yellow if current week)
+    if (w.booked > 0) {
+      const bkH = Math.max(3, Math.round((w.booked / maxAll) * H));
+      out += `<rect x="${gx}" y="${H-bkH}" width="${BW}" height="${bkH}" fill="${w.isCurrent?'#fad000':'#f90006'}" rx="1" opacity="${w.isCurrent?0.8:1}"/>`;
+      out += `<text x="${gx+BW/2}" y="${H-bkH-3}" text-anchor="middle" font-size="8" fill="#888">${w.booked}</text>`;
+    }
+    // Right bar: Held (green) stacked on No Show (orange)
+    const rx = gx + BW + IGAP;
+    const nsH  = w.no_show > 0 ? Math.max(3, Math.round((w.no_show / maxAll) * H)) : 0;
+    const hldH = w.held    > 0 ? Math.max(3, Math.round((w.held    / maxAll) * H)) : 0;
+    if (nsH  > 0) out += `<rect x="${rx}" y="${H-nsH}"      width="${BW}" height="${nsH}"  fill="#f97316" rx="1"/>`;
+    if (hldH > 0) out += `<rect x="${rx}" y="${H-nsH-hldH}" width="${BW}" height="${hldH}" fill="#16a34a" rx="1"/>`;
+    const heldTot = w.held + w.no_show;
+    if (heldTot > 0) out += `<text x="${rx+BW/2}" y="${H-nsH-hldH-3}" text-anchor="middle" font-size="8" fill="#888">${heldTot}</text>`;
+    // x-axis label
+    if (w.isCurrent) {
+      out += `<text x="${gx+groupW/2}" y="${H+13}" text-anchor="middle" font-size="7.5" fill="#c2831b" font-weight="600">WTD</text>`;
+    } else if (i % 2 === 0) {
+      out += `<text x="${gx+groupW/2}" y="${H+13}" text-anchor="middle" font-size="7.5" fill="#aaa">${w.label}</text>`;
     }
   });
-  out += `<rect x="0" y="${H+LABEL_H+4}" width="8" height="8" fill="#16a34a" rx="1"/><text x="12" y="${H+LABEL_H+12}" font-size="9" fill="#666">Held</text>`;
-  out += `<rect x="46" y="${H+LABEL_H+4}" width="8" height="8" fill="#f97316" rx="1"/><text x="58" y="${H+LABEL_H+12}" font-size="9" fill="#666">No Show</text>`;
+  // Legend
+  const ly = H + LABEL_H + 4;
+  out += `<rect x="0" y="${ly}" width="8" height="8" fill="#f90006" rx="1"/><text x="12" y="${ly+8}" font-size="9" fill="#666">Booked</text>`;
+  out += `<rect x="54" y="${ly}" width="8" height="8" fill="#16a34a" rx="1"/><text x="66" y="${ly+8}" font-size="9" fill="#666">Held</text>`;
+  out += `<rect x="100" y="${ly}" width="8" height="8" fill="#f97316" rx="1"/><text x="112" y="${ly+8}" font-size="9" fill="#666">No Show</text>`;
   return `<svg viewBox="0 0 ${W} ${H+LABEL_H+20}" width="100%" style="overflow:visible;display:block">${out}</svg>`;
 }
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
