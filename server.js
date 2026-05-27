@@ -84,8 +84,8 @@ async function fetchStageHistory(dealIds) {
         const history = result.propertiesWithHistory?.dealstage || [];
         let meetingBookedAt = null;
         let qualifiedAt = null;
-        const sortedHistory = history.slice().sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-      for (const h of sortedHistory) {
+        const sortedHistory = history.slice().sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+        for (const h of sortedHistory) {
           if (h.value === MEETING_BOOKED_STAGE_ID && !meetingBookedAt) meetingBookedAt = h.timestamp;
           if (QUALIFIED_STAGE_IDS.has(h.value) && !qualifiedAt) qualifiedAt = h.timestamp;
         }
