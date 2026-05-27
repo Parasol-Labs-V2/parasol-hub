@@ -125,12 +125,12 @@ html,body{width:100%;height:100%;font-family:'Inter',sans-serif;background:var(-
           <div class="metric"><div class="metric-label">Onboarding MRR</div><div class="metric-value dim" id="md-onboarding-mrr">—</div></div>
           <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value dim" id="md-win-rate">—</div></div>
         </div>
-        <div class="h-section-label">Pipeline</div>
+        <div class="h-section-label">Pipeline (MRR)</div>
         <div class="metric full" style="padding:0;background:none;border:none">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-            <div class="metric"><div class="metric-label">Pipeline MRR</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
+            <div class="metric"><div class="metric-label">Unweighted</div><div class="metric-value dim" id="md-pipeline-mrr">—</div></div>
             <div class="metric"><div class="metric-label">Weighted</div><div class="metric-value dim" id="md-weighted-pipeline">—</div></div>
-            <div class="metric"><div class="metric-label">Active Deals</div><div class="metric-value dim" id="md-active-deals">—</div></div>
+            <div class="metric"><div class="metric-label">Active</div><div class="metric-value dim" id="md-active-deals">—</div></div>
           </div>
         </div>
       </div>
@@ -451,15 +451,16 @@ function renderOutboundList(deals) {
 
 // ─── Engagement config — set engEnd to 'YYYY-MM-DD' once contract dates are confirmed ───
 const CLIENT_CONFIG={
-  messagedesk:{ engEnd: null },
-  duet:       { engEnd: null },
+  messagedesk:{ engEnd: '2026-12-31' },
+  duet:       { engEnd: '2026-08-07' },
 };
 function engLeftLabel(endDate){
   if(!endDate)return'Ongoing';
   const days=Math.ceil((new Date(endDate)-Date.now())/86400000);
   if(days<0)return'Ended';
   if(days<=7)return days+'d left';
-  return Math.ceil(days/7)+'w left';
+  if(days<91)return Math.ceil(days/7)+'w left';   // < 3 months → weeks
+  return Math.ceil(days/30)+'mo left';             // ≥ 3 months → months
 }
 
 // ─── Sparkline helpers ────────────────────────────────────────────────────────
