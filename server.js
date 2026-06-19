@@ -9,10 +9,460 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+const MD_DASHBOARD_URL  = 'https://messagedesk-dashboard.vercel.app';
+const MD_NINE_URL       = 'https://messagedesk-dashboard-nine.vercel.app'; // has /api/activity
+const MD_INSTANTLY_KEY  = process.env.MD_INSTANTLY_KEY  || 'OTNhZDdjZjgtMDU4Yi00ZDgyLThjMTEtZWExZjY4NjE3YmM3OndYdUl2T0JZeGFaag==';
+const MD_HEYREACH_KEY   = process.env.MD_HEYREACH_KEY   || 'jLny4sT0Hm8mw0K9Or68xWtIR0zx1msornUUW3uiBp8=';
+const MD_FATHOM_KEY     = process.env.MD_FATHOM_KEY     || 'jHABMx60Sb4MjTLPNnJ9zw.FNKRJcbRIYxKjf8PWuAXOvcOjjdJQ2tM32ijTOjAecI';
+const ATTIO_KEY         = process.env.ATTIO_KEY         || '1cfe31396fa6b1f36f90691f320ccdd28575e23bac77e8f9f772f3f8cc77c152';
+const TB_INSTANTLY_KEY  = process.env.TB_INSTANTLY_KEY  || 'YzhkNzU1ODUtYjFlMS00YWQzLTlhYjMtMGVlNGMxNDdhNWIzOkVIbGRydmFsckZnWg==';
+const TB_ECOMM_CAMP_ID  = '170a61eb-446f-4d5a-9916-5311d58ecf50';
+
+// Notion CRM snapshot — updated 2026-06-11 from individual deal pages
+// Names are safe for dashboard; FedEx/LAD are tracked separately as no-name-in-outbound
+const TB_HEYREACH_KEY = 'k4yQ8ha0LaKZV1xQpyrRS9JbJt71IH0qpfjJQrP2iMw=';
+// Notion CRM snapshot — Live Deals (collection 1bbfb75b). Refresh from Notion as deals update.
+const TB_CRM_DEALS = [
+  { name: 'HealNow', stage: 'Closed Won', owner: 'Shilpan', vertical: 'Other',
+    arr: null, close_date: null, next_step_date: null,
+    note: 'Live: 50+ AML rules, >$1.5B net payments monitored. Expanding to ops dashboards + embedded analytics.' },
+  { name: 'Swiggy Instamart', stage: 'Mutual Evaluation', owner: 'Shilpan', vertical: 'FMCG',
+    arr: 100000, close_date: '2026-07-18', next_step_date: '2026-06-17',
+    note: 'Rides on freshness/self-maintenance demo. POC agreed; meeting tentatively 6/17.' },
+  { name: 'Truly Free Home', stage: 'Mutual Evaluation', owner: 'Shilpan', vertical: 'Retail',
+    arr: 100000, close_date: '2026-07-31', next_step_date: null,
+    note: 'Pre-recorded e-comm demo + Chad-bridge pre-read ahead of exec offsite. Win CDAO Chad Buckendahl (skeptic).' },
+  { name: 'HRPL / McDonald\'s of India', stage: 'Negotiation', owner: 'Jainit', vertical: 'FMCG',
+    arr: 5000, close_date: null, next_step_date: '2026-06-09',
+    note: '$5K setup + ~$100/restaurant/mo across 500+ on hitting thresholds. Gated on data readiness.' },
+  { name: 'FedEx (Flight Safety)', stage: 'Proposal', owner: 'Shilpan', vertical: 'Other',
+    arr: null, close_date: null, next_step_date: null,
+    note: 'Pilot proposal A/B/C sent (Option B, ~8 wks). VP-of-Safety meeting target June. Flight-safety intel layer.' },
+  { name: 'LAD NYC Solutions', stage: 'Proposal', owner: 'Blair', vertical: 'Channel',
+    arr: 4200, close_date: null, next_step_date: null,
+    note: 'Channel: $250/mo base + $100/mo upload add-on, 10% recurring commission to LAD. 2-3 restaurant pilot.' },
+  { name: 'Toast', stage: 'Solution Exploration', owner: 'Shilpan', vertical: 'Retail',
+    arr: null, close_date: null, next_step_date: null,
+    note: 'Dual motion: internal analytics (Kristine) + embed partnership (Craig). Gated on data readiness.' },
+  { name: 'Haldiram\'s', stage: 'Solution Exploration', owner: 'Shilpan', vertical: 'FMCG',
+    arr: null, close_date: null, next_step_date: null,
+    note: '9-dim data-readiness diagnostic built. Meeting postponed; gated on SKU dedup cleanup.' },
+];
+// Advisor Calls snapshot — updated 2026-06-15 from Notion (collection 42208258)
+// Wassim Karawani (Shakepay) completed 6/15: graduating per Slack; Notion status still "Follow-up"
+const TB_ADVISOR_CALLS = [
+  { call_date: '2026-05-28', status: 'Scheduled',            graduating: false },
+  { call_date: '2026-05-28', status: 'Scheduled',            graduating: false },
+  { call_date: '2026-05-28', status: 'Peer / Non-commercial', graduating: false },
+  { call_date: '2026-05-28', status: 'Scheduled',            graduating: false },
+  { call_date: '2026-05-29', status: 'Peer / Non-commercial', graduating: false },
+  { call_date: '2026-06-06', status: 'Scheduled',            graduating: false },
+  { call_date: '2026-06-08', status: 'Scheduled',            graduating: false },
+  { call_date: '2026-06-15', status: 'Follow-up',            graduating: false },
+];
+
+// Joe Carbonaro + Josh Irwin (Parasol) actor IDs in the Roebling Attio workspace
+const ROEBLING_OWNERS   = new Set(['d17e3b6d-c768-4010-a442-8fce66c22f0e','f5c6155e-4bea-4691-b333-735f1f682bac']);
+const ROE_PIPELINE_S    = ['Connected','Demo booked','Demo completed','Mutual evaluation','Champion confirmed','Proposal sent','Legal'];
+const ROE_WON_S         = 'Won: H1 Early Access';
+const ROE_COMMITTED_S   = 'Waitlist';
+
+async function attioPost(path, body) {
+  const r = await axios.post(`https://api.attio.com${path}`, body, {
+    headers: { Authorization: `Bearer ${ATTIO_KEY}`, 'Content-Type': 'application/json' },
+    timeout: 20000
+  });
+  return r.data;
+}
+const ACCOIL_TOKEN      = process.env.ACCOIL_TOKEN      || 'accoil_qhJMx5RJsdtesWSTAGjEhp9xdCfFYe64Q5rC';
+const ACCOIL_WORKSPACE  = '192';
+
+// V2 matched customers from expansion-scored.csv (57 accounts)
+const MD_V2_ACCOIL = [{"id":4,"name":"Polyad","email":"anakaoka@trinet-hi.com","mrr":503.7},{"id":7,"name":"JAA Flight Operations","email":"jaasafety@flyja.com","mrr":156.0},{"id":10,"name":"OneBeat Trucking","email":"Trucking@onebeatdance.com","mrr":39.0},{"id":11,"name":"Lead Support","email":"support@leadhqcrm.com","mrr":297.0},{"id":14,"name":"Asian Sun Martial Arts","email":"info@asiansun.net","mrr":351.0},{"id":15,"name":"Atlas","email":"nativ@atlashealthadvisors.com","mrr":39.0},{"id":17,"name":"Jackie Reckson Yoga","email":"jackiereckson@gmail.com","mrr":29.0},{"id":18,"name":"AquaCats Mobile Swim School Inbox","email":"swim@aquacats.org","mrr":78.0},{"id":22,"name":"Stand Proud Inbox","email":"StandProudK9@gmail.com","mrr":87.0},{"id":27,"name":"Pro Dough","email":"wkdough8030@gmail.com","mrr":29.0},{"id":30,"name":"Red Hen Turf Farm","email":"accounts@redhenturf.com","mrr":117.0},{"id":31,"name":"Balanced Care Community Services","email":"accountinginfo2@cccsofrochester.org","mrr":585.0},{"id":32,"name":"PTP Transport","email":"ciarra_scheirer@ptptransportllc.com","mrr":117.0},{"id":34,"name":"Lynk's Racing, Inc  Inbox","email":"lynksracing@gmavt.net","mrr":29.0},{"id":36,"name":"Mark Martin Motors","email":"joshua@markmartinmotors.com","mrr":158.4},{"id":37,"name":"Stephen Disney","email":"stephendisney17@icloud.com","mrr":495.0},{"id":38,"name":"BehaviorSpan","email":"m.duthie@behaviorspan.com","mrr":312.0},{"id":39,"name":"JDSB Trucking","email":"joe@chicagotl.com","mrr":234.0},{"id":40,"name":"Regions Hospital EMS","email":"bridget.m.voelker@healthpartners.com","mrr":174.0},{"id":41,"name":"FoW Document Collection","email":"Drew.C.Michel@ey.com","mrr":518.7},{"id":43,"name":"Just In Time Roofing & Construction","email":"brian@justintimeroofky.com","mrr":78.0},{"id":46,"name":"USA Sod","email":"lisa@usasod.com","mrr":203.0},{"id":49,"name":"Chesak","email":"randi@chesakseedhouse.com","mrr":29.0},{"id":51,"name":"Mid South Outdoor Lighting & Audio","email":"office@mid-southirrigation.com","mrr":87.0},{"id":52,"name":"Sylva","email":"mwest@sylvacorp.com","mrr":117.0},{"id":53,"name":"Alliance Pro Inspections","email":"noah@allianceproinspections.com","mrr":58.0},{"id":54,"name":"Maple Lane Farm","email":"info@maplelanefarm.us","mrr":29.0},{"id":58,"name":"McGuire Furniture Inbox","email":"rental@McGuireFurnitureRental.com","mrr":39.0},{"id":59,"name":"Sudol Tax","email":"brooke@sudoltax.com","mrr":234.0},{"id":63,"name":"We Grow Hair","email":"marketing@wegrowhair.com","mrr":351.0},{"id":69,"name":"Candice Miele's Assistant","email":"admin@candicemieleskin.com","mrr":117.0},{"id":70,"name":"Haven","email":"shaneaghoian@myhavenstores.com","mrr":138.0},{"id":72,"name":"National Distributors","email":"brad@breakwatertech.com","mrr":109.2},{"id":74,"name":"Outer Reefs Consulting","email":"kristin@outerreefs.com","mrr":87.0},{"id":78,"name":"MMLG in box","email":"mark@northernarizonainjurylaw.com","mrr":116.0},{"id":81,"name":"Stan's Body Shop, Inc","email":"office@stansbodyshopinc.com","mrr":78.0},{"id":96,"name":"Home Systems","email":"contact@hsbd.com","mrr":232.0},{"id":97,"name":"Autoworld Collision","email":"randi@autoworldcollision.com","mrr":78.0},{"id":98,"name":"Ceiba Inbox","email":"admin@ceibaadventures.com","mrr":29.0},{"id":100,"name":"TLC Text","email":"tonja@tlcbookkeepingllc.com","mrr":58.0},{"id":111,"name":"Balance","email":"samhallowsdc@gmail.com","mrr":29.0},{"id":112,"name":"Kids Speak","email":"info@kidsspeakdenton.com","mrr":39.0},{"id":115,"name":"Langer Homes inbox","email":"admin@langerhomes.com","mrr":99.0},{"id":117,"name":"Crosstalk Mobile LLC","email":"david@CrosstalkMobile.com","mrr":117.0},{"id":119,"name":"Gold Stallion Services","email":"operations@goldstallionservices.com","mrr":99.0},{"id":120,"name":"Murphy Beds","email":"murphybedsormond@yahoo.com","mrr":39.0},{"id":125,"name":"InvestorBootz","email":"david.queen@investorbootz.com","mrr":195.0},{"id":129,"name":"Texas Materials - Gulf Coast Region","email":"brach.whitman@texasmaterials.com","mrr":395.0},{"id":130,"name":"Kiana Pan","email":"tours@mail.hsa.net","mrr":39.0},{"id":141,"name":"John Paul Restoration Leads","email":"monnieq30@gmail.com","mrr":58.0},{"id":147,"name":"Intero Digital - MessageDesk","email":"interoap@interodigital.com","mrr":39.0},{"id":148,"name":"Patrick Quinn","email":"pat@pquinnlaw.com","mrr":39.0},{"id":155,"name":"Rare Blue Moon Marketing","email":"alexis@rarebluemoon.io","mrr":39.0},{"id":158,"name":"Rodney Westhafer","email":"accounting@westhafer.com","mrr":39.0},{"id":160,"name":"HMS Admissions","email":"admissions@highmowing.org","mrr":39.0},{"id":161,"name":"BayCCS Support","email":"msmolens@bayccs.com","mrr":149.4},{"id":167,"name":"DSEC","email":"surbanczyk@deafsmith.coop","mrr":39.0}];
+
 app.get('/api/messagedesk/dashboard', async (req, res) => {
   try {
-    const r = await axios.get('https://messagedesk-dashboard.vercel.app/api/dashboard', { timeout: 25000 });
+    if (req.query.refresh === '1') delete cache['md'];
+    const cached = getCache('md');
+    if (cached) return res.json(cached);
+    const r = await axios.get(`${MD_DASHBOARD_URL}/api/dashboard`, { timeout: 55000 });
+    setCache('md', r.data);
     res.json(r.data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/messagedesk/activity', async (req, res) => {
+  try {
+    const r = await axios.get(`${MD_NINE_URL}/api/activity`, { timeout: 55000 });
+    res.json(r.data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Instantly email send counts — per-campaign queries for full historical coverage
+// Workspace is dedicated to MessageDesk; query all campaigns individually so we get complete history
+app.get('/api/messagedesk/instantly', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['md_instantly'];
+    const cached = getCache('md_instantly');
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+
+    // Build 13-week buckets (index 0 = oldest week)
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+    const windowStart = weeks[0].ms;
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    const headers = { Authorization: `Bearer ${MD_INSTANTLY_KEY}` };
+
+    // Step 1: fetch all campaigns — workspace is dedicated to MessageDesk, no name filter needed
+    const mdCampaigns = [];
+    let campCursor = null;
+    for (let page = 0; page < 10; page++) {
+      const url = new URL('https://api.instantly.ai/api/v2/campaigns');
+      url.searchParams.set('limit', '100');
+      if (campCursor) url.searchParams.set('starting_after', campCursor);
+      const r = await axios.get(url.toString(), { headers, timeout: 15000 });
+      const items = r.data.items || [];
+      mdCampaigns.push(...items);
+      campCursor = r.data.next_starting_after;
+      if (!campCursor || !items.length) break;
+    }
+
+    let wtdCount = 0, lwCount = 0;
+
+    // Step 2: paginate each MD campaign's emails independently and bucket by week
+    // JS is single-threaded — concurrent Promise.all mutations of weeks[].count are safe
+    await Promise.all(mdCampaigns.map(async (camp) => {
+      let cursor = null;
+      for (let page = 0; page < 50; page++) {
+        const url = new URL('https://api.instantly.ai/api/v2/emails');
+        url.searchParams.set('limit', '100');
+        url.searchParams.set('campaign_id', camp.id);
+        if (cursor) url.searchParams.set('starting_after', cursor);
+
+        let r;
+        try {
+          r = await axios.get(url.toString(), { headers, timeout: 15000 });
+        } catch(pageErr) {
+          if (pageErr.response?.status === 429) break;
+          throw pageErr;
+        }
+        const items = r.data.items || [];
+        if (!items.length) break;
+
+        let anyInWindow = false, anyValidTs = false;
+        for (const item of items) {
+          const tsMs = new Date(item.timestamp_email).getTime();
+          if (!tsMs || isNaN(tsMs)) continue; // skip nulls — don't let them trigger early stop
+          anyValidTs = true;
+          if (tsMs >= windowStart) {
+            anyInWindow = true;
+            for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; } }
+            if (tsMs >= thisMon.getTime()) wtdCount++;
+            if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) lwCount++;
+          }
+        }
+
+        cursor = r.data.next_starting_after;
+        // Stop when: no more pages, or valid timestamps exist but are all older than our window
+        if (!cursor || (anyValidTs && !anyInWindow)) break;
+      }
+    }));
+
+    const result = { emails_wtd: wtdCount, emails_lw: lwCount, weeks, updated_at: now.toISOString() };
+    setCache('md_instantly', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Accoil customer health — score → green/yellow/red, cached 60 min
+app.get('/api/messagedesk/health', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['md_health'];
+    const cached = getCache('md_health');
+    if (cached) return res.json(cached);
+
+    const ACCOIL_BASE = `https://api.accoil.com/v1/accounts?workspace_id=${ACCOIL_WORKSPACE}`;
+    const BATCH = 10;
+    const results = [];
+
+    for (let i = 0; i < MD_V2_ACCOIL.length; i += BATCH) {
+      const batch = MD_V2_ACCOIL.slice(i, i + BATCH);
+      const batchResults = await Promise.allSettled(batch.map(async (acct) => {
+        const r = await axios.get(`${ACCOIL_BASE}&id=${acct.id}`, {
+          headers: { Authorization: `Bearer ${ACCOIL_TOKEN}` }, timeout: 10000
+        });
+        const m = r.data.metrics || {};
+        const score = m.engagement_score || 0;
+        const lastSeen = m.last_seen ? new Date(m.last_seen) : null;
+        const daysSince = lastSeen ? Math.floor((Date.now() - lastSeen) / 86400000) : 999;
+        // Health: red < 0.25 or unseen 60+ days; yellow 0.25–0.5; green >= 0.5
+        const health = (score < 0.25 || daysSince >= 60) ? 'red'
+                     : score < 0.5 ? 'yellow' : 'green';
+        return { ...acct, score: Math.round(score * 100), health, last_seen: m.last_seen || null };
+      }));
+      for (const r of batchResults) {
+        if (r.status === 'fulfilled') results.push(r.value);
+      }
+    }
+
+    const green  = results.filter(a => a.health === 'green');
+    const yellow = results.filter(a => a.health === 'yellow');
+    const red    = results.filter(a => a.health === 'red').sort((a,b) => a.score - b.score || b.mrr - a.mrr);
+
+    const result = { green: green.length, yellow: yellow.length, red: red.length,
+      total: results.length, red_accounts: red, updated_at: new Date().toISOString() };
+    setCache('md_health', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// HeyReach LinkedIn stats — sums outreach actions per day, bucketed into 13 weekly bins
+app.get('/api/messagedesk/heyreach', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['md_heyreach'];
+    const cached = getCache('md_heyreach');
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    // Build 13-week buckets
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+
+    const hrHeaders = { 'X-API-KEY': MD_HEYREACH_KEY, 'Content-Type': 'application/json' };
+    const campsR = await axios.post('https://api.heyreach.io/api/public/campaign/GetAll',
+      { pageNumber: 0, pageSize: 100 }, { headers: hrHeaders, timeout: 15000 });
+    const campaigns = campsR.data.items || [];
+
+    let liWtd = 0, liLw = 0;
+
+    await Promise.all(campaigns.map(async (camp) => {
+      try {
+        const accountIds = camp.campaignAccountIds || [];
+        if (!accountIds.length) return;
+        const statsR = await axios.post('https://api.heyreach.io/api/public/stats/GetOverallStats',
+          { AccountIds: accountIds, CampaignIds: [camp.id] },
+          { headers: hrHeaders, timeout: 15000 });
+        const byDay = statsR.data.byDayStats || {};
+        for (const [dateStr, day] of Object.entries(byDay)) {
+          const tsMs = new Date(dateStr).getTime();
+          const sent = (day.connectionsSent || 0) + (day.totalMessageStarted || 0) + (day.totalInmailStarted || 0);
+          if (!sent) continue;
+          for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count += sent; break; } }
+          if (tsMs >= thisMon.getTime()) liWtd += sent;
+          if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) liLw += sent;
+        }
+      } catch { /* skip failed campaigns */ }
+    }));
+
+    const result = { li_wtd: liWtd, li_lw: liLw, weeks, updated_at: now.toISOString() };
+    setCache('md_heyreach', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Fathom meetings — paginate /external/v1/meetings, bucket into 13 weekly bins
+// Auth: X-Api-Key header. Filter: created_after=windowStart ISO string.
+// Use recording_start_time (actual start) as canonical meeting timestamp.
+app.get('/api/messagedesk/fathom', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['md_fathom'];
+    const cached = getCache('md_fathom', 30 * 60 * 1000); // 30-min TTL — Fathom API is slow
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+
+    // Build 13-week buckets
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+    const windowStart = weeks[0].ms;
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    const headers = { 'X-Api-Key': MD_FATHOM_KEY };
+    let meetingsWtd = 0, meetingsLw = 0, cursor = null;
+
+    // Fathom's created_after filter causes a 500 on their end — paginate newest-first instead
+    // and stop once we've gone past the 13-week window
+    for (let page = 0; page < 50; page++) {
+      const url = new URL('https://api.fathom.ai/external/v1/meetings');
+      url.searchParams.set('limit', '20');
+      if (cursor) url.searchParams.set('cursor', cursor);
+
+      const r = await axios.get(url.toString(), { headers, timeout: 20000 });
+      const items = r.data.items || [];
+      if (!items.length) break;
+
+      let anyInWindow = false, anyValidTs = false;
+      for (const mtg of items) {
+        const tsMs = new Date(mtg.recording_start_time || mtg.created_at).getTime();
+        if (isNaN(tsMs)) continue;
+        anyValidTs = true;
+        if (tsMs >= windowStart) {
+          anyInWindow = true;
+          for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; } }
+          if (tsMs >= thisMon.getTime()) meetingsWtd++;
+          if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) meetingsLw++;
+        }
+      }
+
+      cursor = r.data.next_cursor;
+      // Stop when we've gone past our window or no more pages
+      if (!cursor || (anyValidTs && !anyInWindow)) break;
+    }
+
+    const result = { meetings_wtd: meetingsWtd, meetings_lw: meetingsLw, weeks, updated_at: now.toISOString() };
+    setCache('md_fathom', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Roebling ─────────────────────────────────────────────────────────────────
+
+// Pipeline: fetch all Attio deals, filter to Joe+Josh, aggregate by stage
+app.get('/api/roebling/pipeline', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['roe_pipeline'];
+    const cached = getCache('roe_pipeline');
+    if (cached) return res.json(cached);
+
+    // Paginate all deals (workspace has 1000+)
+    const allDeals = [];
+    let offset = 0;
+    while (true) {
+      const data = await attioPost('/v2/objects/deals/records/query', { limit: 500, offset });
+      const page = data.data || [];
+      allDeals.push(...page);
+      if (page.length < 500) break;
+      offset += 500;
+    }
+
+    // Filter to Joe / Josh owner IDs
+    const deals = allDeals
+      .filter(r => ROEBLING_OWNERS.has(r.values.owner?.[0]?.referenced_actor_id))
+      .map(r => {
+        const v = r.values;
+        return {
+          name:     v.name?.[0]?.value || '',
+          stage:    v.stage?.[0]?.status?.title || '',
+          weighted: v.weighted_deal_value_6?.[0]?.currency_value || 0,
+        };
+      });
+
+    let activeDeals = 0, activeWeighted = 0, wonDeals = 0, wonWeighted = 0, committedDeals = 0, committedWeighted = 0;
+    const byStage = {};
+    for (const d of deals) {
+      if (!byStage[d.stage]) byStage[d.stage] = { count: 0, weighted: 0, deals: [] };
+      byStage[d.stage].count++;
+      byStage[d.stage].weighted += d.weighted;
+      byStage[d.stage].deals.push({ name: d.name, weighted: d.weighted });
+      if (ROE_PIPELINE_S.includes(d.stage))  { activeDeals++;    activeWeighted    += d.weighted; }
+      else if (d.stage === ROE_WON_S)        { wonDeals++;       wonWeighted       += d.weighted; }
+      else if (d.stage === ROE_COMMITTED_S)  { committedDeals++; committedWeighted += d.weighted; }
+    }
+
+    const stages = ROE_PIPELINE_S.map(s => ({
+      stage: s, count: byStage[s]?.count || 0, weighted: byStage[s]?.weighted || 0,
+      deals: byStage[s]?.deals || []
+    }));
+
+    const result = {
+      active_deals: activeDeals, active_weighted: activeWeighted,
+      won_deals: wonDeals, won_weighted: wonWeighted,
+      committed_deals: committedDeals, committed_weighted: committedWeighted,
+      stages, updated_at: new Date().toISOString()
+    };
+    setCache('roe_pipeline', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Calls: bucket Attio calls by week into 13-week bins
+app.get('/api/roebling/calls', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['roe_calls'];
+    const cached = getCache('roe_calls');
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+    const windowStart = weeks[0].ms;
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    let callsWtd = 0, callsLw = 0, offset = 0;
+    while (offset < 2000) {
+      const data = await attioPost('/v2/objects/calls/records/query', {
+        limit: 100, offset,
+        sorts: [{ attribute: 'call_date', direction: 'desc' }]
+      });
+      const page = data.data || [];
+      if (!page.length) break;
+      let anyInWindow = false, anyValidTs = false;
+      for (const r of page) {
+        const dateStr = r.values.call_date?.[0]?.value;
+        if (!dateStr) continue;
+        const tsMs = new Date(dateStr + 'T00:00:00Z').getTime();
+        anyValidTs = true;
+        if (tsMs >= windowStart) {
+          anyInWindow = true;
+          for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; } }
+          if (tsMs >= thisMon.getTime()) callsWtd++;
+          if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) callsLw++;
+        }
+      }
+      if (anyValidTs && !anyInWindow) break;
+      offset += 100;
+      if (page.length < 100) break;
+    }
+
+    const result = { calls_wtd: callsWtd, calls_lw: callsLw, weeks, updated_at: now.toISOString() };
+    setCache('roe_calls', result);
+    res.json(result);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -47,10 +497,10 @@ const DUET_OWNER_MAP = {
 };
 
 const cache = {};
-function getCache(key) {
+function getCache(key, ttlMs = 5 * 60 * 1000) {
   const e = cache[key];
   if (!e) return null;
-  if (Date.now() - e.ts > 5 * 60 * 1000) return null;
+  if (Date.now() - e.ts > ttlMs) return null;
   return e.data;
 }
 function setCache(key, data) { cache[key] = { data, ts: Date.now() }; }
@@ -97,13 +547,107 @@ async function fetchStageHistory(dealIds) {
   return stageEnteredMap;
 }
 
+async function fetchMeetingEngagements(dealIds) {
+  const nowMs = Date.now();
+  const hasUpcomingMap = {};
+  if (!dealIds.length) return hasUpcomingMap;
+
+  // Step 1: associations for all deals in parallel
+  const assocResults = await Promise.allSettled(dealIds.map(async (dealId) => {
+    const r = await axios.get(`${HS_BASE}/crm/v3/objects/deals/${dealId}/associations/meetings`, {
+      headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}` }
+    });
+    return { dealId, mtgIds: (r.data.results || []).map(m => m.id) };
+  }));
+
+  const dealToMtgIds = {};
+  const allMtgIds = [];
+  for (const r of assocResults) {
+    if (r.status === 'fulfilled' && r.value.mtgIds.length) {
+      dealToMtgIds[r.value.dealId] = r.value.mtgIds;
+      allMtgIds.push(...r.value.mtgIds);
+    }
+  }
+  if (!allMtgIds.length) return hasUpcomingMap;
+
+  // Step 2: batch read meeting start times
+  const unique = [...new Set(allMtgIds)];
+  const chunks = [];
+  for (let i = 0; i < unique.length; i += 100) chunks.push(unique.slice(i, i + 100));
+  const mtgStartMap = {};
+  await Promise.all(chunks.map(async (chunk) => {
+    const r = await axios.post(`${HS_BASE}/crm/v3/objects/meetings/batch/read`,
+      { inputs: chunk.map(id => ({ id })), properties: ['hs_meeting_start_time'] },
+      { headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' } }
+    );
+    for (const m of (r.data.results || [])) {
+      const ts = m.properties?.hs_meeting_start_time;
+      if (ts) mtgStartMap[m.id] = new Date(ts).getTime();
+    }
+  }));
+
+  // Step 3: tag each deal
+  for (const [dealId, mtgIds] of Object.entries(dealToMtgIds)) {
+    hasUpcomingMap[dealId] = mtgIds.some(id => (mtgStartMap[id] || 0) > nowMs);
+  }
+  return hasUpcomingMap;
+}
+
+async function fetchDealEligibility(dealIds) {
+  const eligMap = {};
+  if (!dealIds.length) return eligMap;
+
+  // Batch fetch deal→company associations (v4 batch API, 100 per request)
+  const chunks = [];
+  for (let i = 0; i < dealIds.length; i += 100) chunks.push(dealIds.slice(i, i + 100));
+
+  const dealToCompanyId = {};
+  await Promise.all(chunks.map(async (chunk) => {
+    try {
+      const r = await axios.post(`${HS_BASE}/crm/v4/associations/deals/companies/batch/read`,
+        { inputs: chunk.map(id => ({ id: String(id) })) },
+        { headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' } }
+      );
+      for (const result of (r.data.results || [])) {
+        const tos = result.to || [];
+        if (tos.length) dealToCompanyId[result.from.id] = String(tos[0].toObjectId);
+      }
+    } catch(e) { console.error('Eligibility assoc error:', e.message); }
+  }));
+
+  // Batch read company aco_lead_eligibility
+  const companyIds = [...new Set(Object.values(dealToCompanyId))];
+  if (!companyIds.length) return eligMap;
+
+  const compChunks = [];
+  for (let i = 0; i < companyIds.length; i += 100) compChunks.push(companyIds.slice(i, i + 100));
+
+  const compEligMap = {};
+  await Promise.all(compChunks.map(async (chunk) => {
+    try {
+      const r = await axios.post(`${HS_BASE}/crm/v3/objects/companies/batch/read`,
+        { inputs: chunk.map(id => ({ id })), properties: ['aco_lead_eligibility'] },
+        { headers: { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' } }
+      );
+      for (const comp of (r.data.results || [])) {
+        compEligMap[comp.id] = comp.properties?.aco_lead_eligibility || null;
+      }
+    } catch(e) { console.error('Eligibility company fetch error:', e.message); }
+  }));
+
+  for (const [dealId, compId] of Object.entries(dealToCompanyId)) {
+    eligMap[dealId] = compEligMap[compId] || null;
+  }
+  return eligMap;
+}
+
 async function fetchDuetDeals() {
   const cached = getCache('duet');
   if (cached) return cached;
 
   const deals = [];
   let after = null;
-  const PROPS = 'dealname,dealstage,pipeline,hubspot_owner_id,closedate,hs_lastmodifieddate,attribution_2024_lives,gross_savings_2024_deal,outreach_attempt_count,last_outreach_date,meeting_date,loi_sent_date,loi_signed_date,enrollment_date,enrollment_deadline,champion_name,champion_role,lost_reason,deal_source,duet_engaged_owner,secondary_owner,meeting_set,np_intro_made,hs_date_entered_3467751100';
+  const PROPS = 'dealname,dealstage,pipeline,hubspot_owner_id,closedate,hs_lastmodifieddate,attribution_2025,gross_savings_2025_deal,outreach_attempt_count,last_outreach_date,meeting_date,loi_sent_date,loi_signed_date,enrollment_date,enrollment_deadline,champion_name,champion_role,lost_reason,deal_source,duet_engaged_owner,secondary_owner,meeting_set,np_intro_made,hs_date_entered_3467751100';
 
   while (true) {
     const body = {
@@ -141,8 +685,8 @@ async function fetchDuetDeals() {
       stage: DUET_STAGE_MAP[stageId] || stageId,
       owner: DUET_OWNER_MAP[ownerId] || ownerCache[ownerId] || ownerId,
       ownerId: ownerId,
-      lives: parseFloat(p.attribution_2024_lives) || 0,
-      gross_savings: parseFloat(p.gross_savings_2024_deal) || 0,
+      lives: parseFloat(p.attribution_2025) || 0,
+      gross_savings: parseFloat(p.gross_savings_2025_deal) || 0,
       outreach_attempts: parseInt(p.outreach_attempt_count) || 0,
       last_outreach: p.last_outreach_date || null,
       meeting_date: p.meeting_date || null,
@@ -157,6 +701,19 @@ async function fetchDuetDeals() {
       qualifiedAt:     history.qualifiedAt     || null,
     };
   });
+
+  // Fetch meeting engagements + deal eligibility in parallel
+  const bookedIds = mapped
+    .filter(d => d.stage_id === MEETING_BOOKED_STAGE_ID && PARASOL_OWNER_IDS.has(d.ownerId))
+    .map(d => d.id);
+  const [hasUpcomingMap, eligibilityMap] = await Promise.all([
+    fetchMeetingEngagements(bookedIds),
+    fetchDealEligibility(mapped.map(d => d.id))
+  ]);
+  for (const d of mapped) {
+    d.hasUpcomingMeeting = hasUpcomingMap[d.id] || false;
+    d.eligibility = eligibilityMap[d.id] || null;
+  }
 
   const result = { deals: mapped, updated_at: new Date().toISOString() };
   setCache('duet', result);
@@ -178,11 +735,178 @@ app.get("/api/duet/team-performance", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Terrabase ─────────────────────────────────────────────────────────────────
+
+// Pipeline (Notion CRM snapshot) + Instantly ecomm email stats
+app.get('/api/terrabase/pipeline', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['tb_pipeline'];
+    const cached = getCache('tb_pipeline');
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+    const windowStart = weeks[0].ms;
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    const headers = { Authorization: `Bearer ${TB_INSTANTLY_KEY}` };
+    let emailsWtd = 0, emailsLw = 0, cursor = null;
+
+    for (let page = 0; page < 50; page++) {
+      const url = new URL('https://api.instantly.ai/api/v2/emails');
+      url.searchParams.set('limit', '100');
+      url.searchParams.set('campaign_id', TB_ECOMM_CAMP_ID);
+      if (cursor) url.searchParams.set('starting_after', cursor);
+      let r;
+      try {
+        r = await axios.get(url.toString(), { headers, timeout: 15000 });
+      } catch(pageErr) {
+        if (pageErr.response?.status === 429) break;
+        throw pageErr;
+      }
+      const items = r.data.items || [];
+      if (!items.length) break;
+      let anyInWindow = false, anyValidTs = false;
+      for (const item of items) {
+        const tsMs = new Date(item.timestamp_email).getTime();
+        if (!tsMs || isNaN(tsMs)) continue;
+        anyValidTs = true;
+        if (tsMs >= windowStart) {
+          anyInWindow = true;
+          for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; } }
+          if (tsMs >= thisMon.getTime()) emailsWtd++;
+          if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) emailsLw++;
+        }
+      }
+      cursor = r.data.next_starting_after;
+      if (!cursor || (anyValidTs && !anyInWindow)) break;
+    }
+
+    const activeDeals = TB_CRM_DEALS.filter(d => !['Closed Won','Closed Lost'].includes(d.stage));
+    const wonDeals    = TB_CRM_DEALS.filter(d => d.stage === 'Closed Won');
+    const totalArr    = activeDeals.reduce((sum, d) => sum + (d.arr || 0), 0);
+
+    const result = {
+      deals: TB_CRM_DEALS,
+      active_deals: activeDeals.length,
+      won_deals: wonDeals.length,
+      total_arr: totalArr,
+      emails_wtd: emailsWtd,
+      emails_lw: emailsLw,
+      weeks,
+      updated_at: now.toISOString()
+    };
+    setCache('tb_pipeline', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// HeyReach LinkedIn stats — Terrabase warm + retail network campaigns
+// Auth: MCP JSON-RPC (xMcpKey), NOT REST X-API-KEY (REST key not available)
+// progressStats.totalUsersFinished bucketed by campaign startedAt date
+app.get('/api/terrabase/heyreach', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['tb_heyreach'];
+    const cached = getCache('tb_heyreach');
+    if (cached) return res.json(cached);
+
+    const now = new Date();
+    const dow = now.getUTCDay();
+    const daysToMon = dow === 0 ? 6 : dow - 1;
+    const thisMon = new Date(now);
+    thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+    thisMon.setUTCHours(0, 0, 0, 0);
+    const lastWkStart = thisMon.getTime() - 7 * 86400000;
+
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const m = new Date(thisMon);
+      m.setUTCDate(thisMon.getUTCDate() - i * 7);
+      weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+        lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+    }
+
+    const MCP_URL = `https://mcp.heyreach.io/mcp?xMcpKey=${encodeURIComponent(TB_HEYREACH_KEY)}`;
+    const mcpRes = await axios.post(MCP_URL, {
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'get_all_campaigns', arguments: { pageNumber: 0, pageSize: 100 } }
+    }, { timeout: 20000, responseType: 'text' });
+
+    const dataLine = (mcpRes.data || '').split('\n').find(l => l.startsWith('data: '));
+    if (!dataLine) throw new Error('No data in MCP response');
+    const mcpJson = JSON.parse(dataLine.slice(6));
+    const campaigns = JSON.parse(mcpJson.result?.content?.[0]?.text || '{}').items || [];
+
+    let liWtd = 0, liLw = 0;
+    for (const camp of campaigns) {
+      if (!camp.startedAt) continue;
+      const finished = camp.progressStats?.totalUsersFinished || 0;
+      if (!finished) continue;
+      const tsMs = new Date(camp.startedAt).getTime();
+      for (const w of weeks) {
+        if (tsMs >= w.ms && tsMs < w.end) {
+          w.count += finished;
+          if (tsMs >= thisMon.getTime()) liWtd += finished;
+          if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) liLw += finished;
+          break;
+        }
+      }
+    }
+
+    const result = { li_wtd: liWtd, li_lw: liLw, weeks, updated_at: now.toISOString() };
+    setCache('tb_heyreach', result);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/terrabase/advisor', (req, res) => {
+  const now = new Date();
+  const dow = now.getUTCDay();
+  const daysToMon = dow === 0 ? 6 : dow - 1;
+  const thisMon = new Date(now);
+  thisMon.setUTCDate(now.getUTCDate() - daysToMon);
+  thisMon.setUTCHours(0, 0, 0, 0);
+
+  const weeks = [];
+  for (let i = 12; i >= 0; i--) {
+    const m = new Date(thisMon);
+    m.setUTCDate(thisMon.getUTCDate() - i * 7);
+    weeks.push({ ms: m.getTime(), end: m.getTime() + 7 * 86400000,
+      lbl: `${m.getUTCMonth()+1}/${m.getUTCDate()}`, cur: i === 0, count: 0 });
+  }
+
+  for (const call of TB_ADVISOR_CALLS) {
+    if (!call.call_date) continue;
+    const tsMs = new Date(call.call_date + 'T12:00:00Z').getTime();
+    for (const w of weeks) {
+      if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; }
+    }
+  }
+
+  const completed = TB_ADVISOR_CALLS.filter(c => c.status === 'Completed').length;
+  const graduated = TB_ADVISOR_CALLS.filter(c => c.graduating).length;
+  res.json({ weeks, total: TB_ADVISOR_CALLS.length, completed, graduated,
+    rate: completed > 0 ? Math.round(graduated / completed * 100) : null,
+    updated_at: now.toISOString() });
+});
+
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Parasol Hub running on port ${PORT}`));
 
 // Proxy team performance from Duet dashboard
