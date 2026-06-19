@@ -60,6 +60,11 @@ const TB_ADVISOR_CALLS = [
   { call_date: '2026-06-08', status: 'Scheduled',            graduating: false },
   { call_date: '2026-06-15', status: 'Follow-up',            graduating: false },
 ];
+// Provenance for the Terrabase Tier-B snapshots above (last manual sync from Notion).
+// /api/brief surfaces these as the real freshness, since the endpoint updated_at only
+// reflects when the code last ran — NOT when the underlying CRM data was edited.
+const TB_CRM_SNAPSHOT_DATE     = '2026-06-11'; // TB_CRM_DEALS ← Notion Live Deals (collection 1bbfb75b)
+const TB_ADVISOR_SNAPSHOT_DATE = '2026-06-15'; // TB_ADVISOR_CALLS ← Notion advisor tracker (collection 42208258)
 
 // Joe Carbonaro + Josh Irwin (Parasol) actor IDs in the Roebling Attio workspace
 const ROEBLING_OWNERS   = new Set(['d17e3b6d-c768-4010-a442-8fce66c22f0e','f5c6155e-4bea-4691-b333-735f1f682bac']);
@@ -731,7 +736,9 @@ app.get('/api/duet/deals', async (req, res) => {
 app.get("/api/duet/team-performance", async (req, res) => {
   try {
     const r = await axios.get("https://duet-dashboard.vercel.app/api/team-performance", { timeout: 25000 });
-    res.json(r.data);
+    const d = r.data || {};
+    // Ensure every consumed metric carries a provenance stamp (brief no-carry-over rule)
+    res.json({ ...d, updated_at: d.updated_at || new Date().toISOString() });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -900,6 +907,149 @@ app.get('/api/terrabase/advisor', (req, res) => {
   res.json({ weeks, total: TB_ADVISOR_CALLS.length, completed, graduated,
     rate: completed > 0 ? Math.round(graduated / completed * 100) : null,
     updated_at: now.toISOString() });
+});
+
+// ── Consolidated brief feed ─────────────────────────────────────────────────
+// One source-stamped payload for the weekly Strategic Brief. Every metric carries
+// { source, updated_at, stale }. A feed that can't be fetched fresh THIS request is
+// marked stale:true with its value nulled — never silently carried forward (enforces
+// the no-carry-over rule structurally). Full registry of which numbers map to which
+// feed: parasol-clients/internal/brief-system/metrics-source-map.md.
+
+// Duet aggregation — MIRRORS public/index.html loadDuet() exactly. Keep the two in
+// sync (TODO: unify into one shared module so they can never drift).
+const DUET_BRIEF_QUAL   = new Set(['Meeting Booked','Meeting Held','Interest Confirmed','Diagnostic','LOI Sent','Enrolled / Won']);
+const DUET_BRIEF_PAR_OW = new Set(['163553854','83189293','164358712']); // Florencia, Joe, Lauren
+function aggregateDuetForBrief(rawDeals) {
+  const isElig = d => d.eligibility !== '3 - Ineligible';
+  const deals  = (rawDeals || []).filter(d => DUET_BRIEF_PAR_OW.has(String(d.ownerId || '')));
+  const pipe   = deals.filter(d => DUET_BRIEF_QUAL.has(d.stage || d.stage_id) && isElig(d));
+  const total_savings = pipe.reduce((s,d) => s + Math.max(0, d.gross_savings || 0), 0);
+  const total_lives   = pipe.reduce((s,d) => s + (d.lives || 0), 0);
+  const top_deals = [...pipe].sort((a,b) => (b.gross_savings||0) - (a.gross_savings||0))
+    .slice(0,5).map(d => ({ name: d.dealname, stage: d.stage, savings: d.gross_savings||0, lives: d.lives||0 }));
+  return { active_deals: pipe.length, total_savings, total_lives, top_deals };
+}
+
+app.get('/api/brief', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['brief'];
+    const cached = getCache('brief');
+    if (cached) return res.json(cached);
+
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const base  = `${proto}://${req.headers.host}`;
+    const rq    = req.query.refresh === '1' ? '?refresh=1' : '';
+    const slow  = req.query.refresh === '1' ? 55000 : 45000;
+
+    const get = async (pathname, timeout = 25000) => {
+      const t0 = Date.now();
+      try {
+        const r = await axios.get(`${base}${pathname}${rq}`, { timeout });
+        if (r.data && r.data.error) return { ok:false, error:r.data.error, ms:Date.now()-t0 };
+        return { ok:true, data:r.data, ms:Date.now()-t0 };
+      } catch(e) { return { ok:false, error:e.message, ms:Date.now()-t0 }; }
+    };
+
+    const [roePipe, roeCalls, duetDeals, duetTeam, mdHealth, mdInst, mdHR, mdFathom, mdDash, tbPipe, tbHR, tbAdv] =
+      await Promise.all([
+        get('/api/roebling/pipeline'),
+        get('/api/roebling/calls'),
+        get('/api/duet/deals', 35000),
+        get('/api/duet/team-performance'),
+        get('/api/messagedesk/health'),
+        get('/api/messagedesk/instantly'),
+        get('/api/messagedesk/heyreach'),
+        get('/api/messagedesk/fathom', slow),
+        get('/api/messagedesk/dashboard', 12000), // Close proxy is persistently down — fail fast, don't block the whole pull
+        get('/api/terrabase/pipeline'),
+        get('/api/terrabase/heyreach'),
+        get('/api/terrabase/advisor'),
+      ]);
+
+    // wrap a feed into a stamped metric; stale:true means "could not fetch fresh — do not carry"
+    const stamp = (feed, source, shape) => feed.ok
+      ? { stale:false, source, updated_at: feed.data?.updated_at || null, ...shape(feed.data) }
+      : { stale:true,  source, updated_at:null, value:null, error: feed.error };
+
+    const duetAgg = duetDeals.ok ? aggregateDuetForBrief(duetDeals.data.deals) : null;
+
+    const payload = {
+      generated_at: new Date().toISOString(),
+      base_url: base,
+      no_carry_over: 'Every value below was fetched this request. stale:true means the live source could not be reached this cycle — drop or hand-source that number, never carry a prior value.',
+      clients: {
+        messagedesk: {
+          health: stamp(mdHealth, 'Accoil via /api/messagedesk/health',
+            d => ({ green:d.green, yellow:d.yellow, red:d.red, total:d.total })),
+          activity: {
+            emails:   stamp(mdInst,   'Instantly via /api/messagedesk/instantly', d => ({ wtd:d.emails_wtd, lw:d.emails_lw, weeks:d.weeks })),
+            linkedin: stamp(mdHR,     'HeyReach via /api/messagedesk/heyreach',    d => ({ wtd:d.li_wtd, lw:d.li_lw, weeks:d.weeks })),
+            meetings: stamp(mdFathom, 'Fathom via /api/messagedesk/fathom',        d => ({ wtd:d.meetings_wtd, lw:d.meetings_lw, weeks:d.weeks })),
+          },
+          pipeline: mdDash.ok
+            ? { stale:false, source:'Close.io via /api/messagedesk/dashboard', updated_at: mdDash.data?.updated_at || null, value: mdDash.data }
+            : { stale:true,  source:'Close.io ($2k+ ARR Active Deals smart view)', updated_at:null, value:null,
+                note:`Dashboard Close proxy unreachable (${mdDash.error||''}). Hand-pull from Close.io smart view save_1G9JYa5hgaGtxznyVFbhRfHubSo9HwSAjKWwo3k46T7. Promote to auto-source by adding a Close API key to hub-v3 or fixing the upstream proxy.` },
+        },
+        duet: {
+          pipeline: duetAgg
+            ? { stale:false, source:'HubSpot via /api/duet/deals (Parasol-owned ∩ qualified stages ∩ eligible — mirrors dashboard)', updated_at: duetDeals.data?.updated_at || null, ...duetAgg }
+            : { stale:true,  source:'HubSpot via /api/duet/deals', updated_at:null, value:null, error: duetDeals.error },
+          activity: stamp(duetTeam, 'HubSpot via /api/duet/team-performance', d => ({ owners:d.owners })),
+        },
+        roebling: {
+          pipeline: stamp(roePipe, 'Attio via /api/roebling/pipeline',
+            d => ({ active_deals:d.active_deals, active_weighted:d.active_weighted, won_deals:d.won_deals, committed_deals:d.committed_deals, stages:d.stages })),
+          calls: stamp(roeCalls, 'Attio via /api/roebling/calls', d => ({ wtd:d.calls_wtd, lw:d.calls_lw, weeks:d.weeks })),
+          note: 'Confidence % and projected close dates are NOT sourced here (Tier C). Confirm with Joe each cycle or omit. TCV = Attio weighted_deal_value_6 (mostly std $20K).',
+        },
+        terrabase: {
+          pipeline: tbPipe.ok
+            ? { stale:false, snapshot:true, snapshot_date: TB_CRM_SNAPSHOT_DATE,
+                source:'Notion CRM snapshot (TB_CRM_DEALS, hardcoded in hub-v3 server.js)',
+                note:`Tier B — real freshness is the snapshot edit date (${TB_CRM_SNAPSHOT_DATE}), NOT updated_at. Verify against the Terrabase Notion Live Deals CRM before publishing.`,
+                updated_at: tbPipe.data?.updated_at || null,
+                active_deals: tbPipe.data.active_deals, won_deals: tbPipe.data.won_deals, total_arr: tbPipe.data.total_arr, deals: tbPipe.data.deals }
+            : { stale:true, source:'Notion CRM snapshot (TB_CRM_DEALS)', updated_at:null, value:null, error: tbPipe.error },
+          activity: {
+            emails:   stamp(tbPipe, 'Instantly via /api/terrabase/pipeline', d => ({ wtd:d.emails_wtd, lw:d.emails_lw, weeks:d.weeks })),
+            linkedin: stamp(tbHR,   'HeyReach via /api/terrabase/heyreach',  d => ({ wtd:d.li_wtd, lw:d.li_lw, weeks:d.weeks })),
+            advisor:  tbAdv.ok
+              ? { stale:false, snapshot:true, snapshot_date: TB_ADVISOR_SNAPSHOT_DATE,
+                  source:'Notion advisor tracker snapshot (TB_ADVISOR_CALLS, hardcoded)',
+                  updated_at: tbAdv.data?.updated_at || null,
+                  total: tbAdv.data.total, completed: tbAdv.data.completed, graduated: tbAdv.data.graduated, rate: tbAdv.data.rate }
+              : { stale:true, source:'Notion advisor tracker snapshot', updated_at:null, value:null, error: tbAdv.error },
+          },
+        },
+      },
+      tier_c_uninstrumented: [
+        'Arlow (contacts / operators / calls / leads — manual)',
+        'MessageDesk cold-call volume (not tracked anywhere)',
+        'Roebling confidence % + projected close dates (confirm with Joe)',
+        'Craniometrix (renewal %, $/mo — qualitative)',
+        'BD pipeline: Nirvana / Ignitia / FraudNet / Boreal (proposals, Grain, dated Slack)',
+        'Solidly / Levain / Raise (narrative only — no $ without a cited source)',
+      ],
+      feeds: {
+        roebling_pipeline:{ ok:roePipe.ok, ms:roePipe.ms }, roebling_calls:{ ok:roeCalls.ok, ms:roeCalls.ms },
+        duet_deals:{ ok:duetDeals.ok, ms:duetDeals.ms }, duet_team:{ ok:duetTeam.ok, ms:duetTeam.ms },
+        md_health:{ ok:mdHealth.ok, ms:mdHealth.ms }, md_instantly:{ ok:mdInst.ok, ms:mdInst.ms },
+        md_heyreach:{ ok:mdHR.ok, ms:mdHR.ms }, md_fathom:{ ok:mdFathom.ok, ms:mdFathom.ms },
+        md_dashboard:{ ok:mdDash.ok, ms:mdDash.ms }, tb_pipeline:{ ok:tbPipe.ok, ms:tbPipe.ms },
+        tb_heyreach:{ ok:tbHR.ok, ms:tbHR.ms }, tb_advisor:{ ok:tbAdv.ok, ms:tbAdv.ms },
+      },
+    };
+
+    // Cache when every feed EXCEPT the known-down Close proxy is healthy. (md_dashboard
+    // is persistently failing; gating cache on it would force a full slow fan-out every call.
+    // Drop it from this exclusion list once the proxy is fixed.)
+    const cacheable = Object.entries(payload.feeds)
+      .filter(([k]) => k !== 'md_dashboard').every(([, f]) => f.ok);
+    if (cacheable) setCache('brief', payload);
+    res.json(payload);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get("*", (req, res) => {
