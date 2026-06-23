@@ -131,60 +131,32 @@ app.get('/api/messagedesk/instantly', async (req, res) => {
 
     const headers = { Authorization: `Bearer ${MD_INSTANTLY_KEY}` };
 
-    // Step 1: fetch all campaigns — workspace is dedicated to MessageDesk, no name filter needed
-    const mdCampaigns = [];
-    let campCursor = null;
-    for (let page = 0; page < 10; page++) {
-      const url = new URL('https://api.instantly.ai/api/v2/campaigns');
-      url.searchParams.set('limit', '100');
-      if (campCursor) url.searchParams.set('starting_after', campCursor);
-      const r = await axios.get(url.toString(), { headers, timeout: 15000 });
-      const items = r.data.items || [];
-      mdCampaigns.push(...items);
-      campCursor = r.data.next_starting_after;
-      if (!campCursor || !items.length) break;
-    }
+    // Workspace-wide daily send analytics — ONE call, no per-email pagination.
+    // PRIOR APPROACH (removed): paginated /api/v2/emails per campaign via Promise.all across
+    // all ~37 campaigns concurrently. That hammered Instantly into 429 rate-limiting, and the
+    // catch did `break` on 429 — silently truncating each campaign after its first page or two.
+    // Since emails come newest-first, only ~today's first page survived; deeper recent-week pages
+    // were never reached. Result: severe, UNSTABLE undercounts (e.g. 130 WTD / 0 last-week, while
+    // the true figures were ~510 / ~651). analytics/daily returns exact per-day `sent` totals for
+    // the whole MD-only workspace in a single request — accurate and immune to rate limiting.
+    const fmtDate = (ms) => new Date(ms).toISOString().slice(0, 10);
+    const url = new URL('https://api.instantly.ai/api/v2/campaigns/analytics/daily');
+    url.searchParams.set('start_date', fmtDate(windowStart));
+    url.searchParams.set('end_date', fmtDate(now.getTime()));
+    const r = await axios.get(url.toString(), { headers, timeout: 20000 });
+    const rows = Array.isArray(r.data) ? r.data : [];
 
     let wtdCount = 0, lwCount = 0;
-
-    // Step 2: paginate each MD campaign's emails independently and bucket by week
-    // JS is single-threaded — concurrent Promise.all mutations of weeks[].count are safe
-    await Promise.all(mdCampaigns.map(async (camp) => {
-      let cursor = null;
-      for (let page = 0; page < 50; page++) {
-        const url = new URL('https://api.instantly.ai/api/v2/emails');
-        url.searchParams.set('limit', '100');
-        url.searchParams.set('campaign_id', camp.id);
-        if (cursor) url.searchParams.set('starting_after', cursor);
-
-        let r;
-        try {
-          r = await axios.get(url.toString(), { headers, timeout: 15000 });
-        } catch(pageErr) {
-          if (pageErr.response?.status === 429) break;
-          throw pageErr;
-        }
-        const items = r.data.items || [];
-        if (!items.length) break;
-
-        let anyInWindow = false, anyValidTs = false;
-        for (const item of items) {
-          const tsMs = new Date(item.timestamp_email).getTime();
-          if (!tsMs || isNaN(tsMs)) continue; // skip nulls — don't let them trigger early stop
-          anyValidTs = true;
-          if (tsMs >= windowStart) {
-            anyInWindow = true;
-            for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count++; break; } }
-            if (tsMs >= thisMon.getTime()) wtdCount++;
-            if (tsMs >= lastWkStart && tsMs < thisMon.getTime()) lwCount++;
-          }
-        }
-
-        cursor = r.data.next_starting_after;
-        // Stop when: no more pages, or valid timestamps exist but are all older than our window
-        if (!cursor || (anyValidTs && !anyInWindow)) break;
+    for (const row of rows) {
+      const tsMs = new Date(row.date + 'T00:00:00Z').getTime();
+      const sent = row.sent || 0;
+      if (!tsMs || isNaN(tsMs) || !sent) continue;
+      if (tsMs >= windowStart) {
+        for (const w of weeks) { if (tsMs >= w.ms && tsMs < w.end) { w.count += sent; break; } }
       }
-    }));
+      if (tsMs >= thisMon.getTime()) wtdCount += sent;
+      else if (tsMs >= lastWkStart) lwCount += sent;
+    }
 
     const result = { emails_wtd: wtdCount, emails_lw: lwCount, weeks, updated_at: now.toISOString() };
     setCache('md_instantly', result);
