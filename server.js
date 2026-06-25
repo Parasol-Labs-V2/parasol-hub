@@ -96,6 +96,72 @@ app.get('/api/messagedesk/dashboard', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── MessageDesk pipeline — DIRECT Close query (bypasses the flaky messagedesk-dashboard proxy) ───
+// Lean: only the 3 active sales stages in the Parasol pipeline (no per-lead activity history —
+// that history fan-out is what makes the upstream /api/dashboard time out). ~6 Close calls, fast.
+const MD_CLOSE_KEY    = process.env.CLOSE_API_KEY || '';
+const MD_PIPE_ID      = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+const MD_ACTIVE_STATUS = {
+  'Champion Confirmed': 'stat_cc0WZatlED2N35FGCESK5bZBWL1luEsAXERlr5PJjm2',
+  'Active Evaluation':  'stat_FZAonpp4O5F7JHwY5WZPojQbWBL1s13ixQQ77ReHW2T',
+  'Meeting Scheduled':  'stat_5AloLXmKYNbiif1UWs8BQ0jEeNEKGQIwfIeXfYLmB1w',
+};
+const MD_WON_STATUS   = 'stat_9HUWswm1Dssw9Ar6PJ4EfgrBpKw3TIyQNpuQnb33W9a';
+const MD_QLOST_STATUS = ['stat_RL2VdsX6p6GYjvTIwxDrAmR8YKcO5LqTn63qGZwvQVf','stat_cxzzhNwX0SyLkKS89Yn8ntR27dIJ9jZhmyX47CapPVe'];
+const MD_STAGE_WEIGHT = { 'Champion Confirmed':0.70, 'Active Evaluation':0.40, 'Meeting Scheduled':0.25 };
+
+function mdCloseAuth() { return { Authorization: `Basic ${Buffer.from(MD_CLOSE_KEY + ':').toString('base64')}` }; }
+function mdToMonthly(o) {
+  if (o.value === null || o.value === undefined || o.value === '') return 0;
+  const d = parseFloat(o.value) / 100, f = (o.value_period || '').toLowerCase();
+  if (f === 'annual') return d / 12;
+  if (f === 'one_time' || f === 'one-time') return 0;
+  return d;
+}
+async function mdCloseCount(statusId) {
+  const r = await axios.get(`https://api.close.com/api/v1/opportunity/?pipeline_id=${MD_PIPE_ID}&status_id=${statusId}&_limit=1&_fields=id`, { headers: mdCloseAuth(), timeout: 20000 });
+  return r.data.total_results || 0;
+}
+async function buildMdPipeline() {
+  const FIELDS = 'id,lead_name,status_label,value,value_period,date_created';
+  const deals = [];
+  for (const [label, id] of Object.entries(MD_ACTIVE_STATUS)) {
+    let skip = 0;
+    while (true) {
+      const r = await axios.get(`https://api.close.com/api/v1/opportunity/?pipeline_id=${MD_PIPE_ID}&status_id=${id}&_limit=100&_skip=${skip}&_fields=${FIELDS}`, { headers: mdCloseAuth(), timeout: 20000 });
+      for (const o of (r.data.data || [])) deals.push({ company: o.lead_name || '', stage: label, monthly_value: mdToMonthly(o), date_created: o.date_created || '' });
+      if (!r.data.has_more) break;
+      skip += 100;
+    }
+  }
+  deals.sort((a,b) => b.monthly_value - a.monthly_value);
+  const active_mrr   = deals.reduce((s,d) => s + d.monthly_value, 0);
+  const champion     = deals.filter(d => d.stage === 'Champion Confirmed');
+  const weighted_mrr = deals.reduce((s,d) => s + d.monthly_value * (MD_STAGE_WEIGHT[d.stage] || 0.2), 0);
+  const by_stage = {};
+  for (const d of deals) { by_stage[d.stage] = by_stage[d.stage] || { count:0, mrr:0 }; by_stage[d.stage].count++; by_stage[d.stage].mrr += d.monthly_value; }
+  const counts = await Promise.all([ mdCloseCount(MD_WON_STATUS), ...MD_QLOST_STATUS.map(mdCloseCount) ]);
+  const won_count = counts[0], qlost = counts.slice(1).reduce((s,n) => s + n, 0);
+  const win_rate  = (won_count + qlost) > 0 ? Math.round(won_count / (won_count + qlost) * 100) : 0;
+  return {
+    kpis: { active_count: deals.length, active_mrr, won_count, win_rate, win_rate_denom: won_count + qlost,
+            champion_count: champion.length, champion_mrr: champion.reduce((s,d)=>s+d.monthly_value,0), weighted_mrr },
+    deals, by_stage,
+    source: 'Close.io direct (Parasol pipeline, active stages)',
+    updated_at: new Date().toISOString(),
+  };
+}
+app.get('/api/messagedesk/pipeline', async (req, res) => {
+  try {
+    if (!MD_CLOSE_KEY) return res.status(503).json({ error: 'CLOSE_API_KEY not set' });
+    if (req.query.refresh === '1') delete cache['md_pipeline'];
+    const cached = getCache('md_pipeline'); if (cached) return res.json(cached);
+    const data = await buildMdPipeline();
+    setCache('md_pipeline', data);
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/messagedesk/activity', async (req, res) => {
   try {
     const r = await axios.get(`${MD_NINE_URL}/api/activity`, { timeout: 55000 });
@@ -933,7 +999,7 @@ app.get('/api/brief', async (req, res) => {
         get('/api/messagedesk/instantly'),
         get('/api/messagedesk/heyreach'),
         get('/api/messagedesk/fathom', slow),
-        get('/api/messagedesk/dashboard', 12000), // Close proxy is persistently down — fail fast, don't block the whole pull
+        get('/api/messagedesk/pipeline', 25000), // direct Close query — replaces the flaky messagedesk-dashboard proxy
         get('/api/terrabase/pipeline'),
         get('/api/terrabase/heyreach'),
         get('/api/terrabase/advisor'),
@@ -960,9 +1026,9 @@ app.get('/api/brief', async (req, res) => {
             meetings: stamp(mdFathom, 'Fathom via /api/messagedesk/fathom',        d => ({ wtd:d.meetings_wtd, lw:d.meetings_lw, weeks:d.weeks })),
           },
           pipeline: mdDash.ok
-            ? { stale:false, source:'Close.io via /api/messagedesk/dashboard', updated_at: mdDash.data?.updated_at || null, value: mdDash.data }
+            ? { stale:false, source:'Close.io direct (active pipeline) via /api/messagedesk/pipeline', updated_at: mdDash.data?.updated_at || null, value: mdDash.data }
             : { stale:true,  source:'Close.io ($2k+ ARR Active Deals smart view)', updated_at:null, value:null,
-                note:`Dashboard Close proxy unreachable (${mdDash.error||''}). Hand-pull from Close.io smart view save_1G9JYa5hgaGtxznyVFbhRfHubSo9HwSAjKWwo3k46T7. Promote to auto-source by adding a Close API key to hub-v3 or fixing the upstream proxy.` },
+                note:`Direct Close query failed (${mdDash.error||''}). Hand-pull from Close.io smart view save_1G9JYa5hgaGtxznyVFbhRfHubSo9HwSAjKWwo3k46T7. Check CLOSE_API_KEY is set in hub-v3 Vercel env.` },
         },
         duet: {
           pipeline: duetAgg
